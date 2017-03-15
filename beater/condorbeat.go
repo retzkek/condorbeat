@@ -22,8 +22,10 @@ type Condorbeat struct {
 	config             config.Config
 	client             publisher.Client
 	checkpointFilePath string
-	checkpoints        map[string]common.Time
+	checkpoints        Checkpoint
 }
+
+type Checkpoint map[string]common.Time
 
 // Creates beater
 func New(b *beat.Beat, cfg *common.Config) (beat.Beater, error) {
@@ -58,8 +60,8 @@ func (bt *Condorbeat) Run(b *beat.Beat) error {
 		}
 	}
 
-	// launch collectors
-	eventch := make(chan common.MapStr)
+	// launch history collectors
+	checkch := make(chan Checkpoint)
 	stopchs := make([]*chan bool, len(schedds))
 	for i, schedd := range schedds {
 		id := base64.StdEncoding.EncodeToString([]byte("condor_history-" + schedd))
@@ -72,12 +74,10 @@ func (bt *Condorbeat) Run(b *beat.Beat) error {
 		}
 		stopch := make(chan bool)
 		stopchs[i] = &stopch
-		go runPeriodicCommand(id, cmd, bt.checkpoints[id], bt.config.Period, eventch, stopch)
+		go runPeriodicCommand(id, cmd, bt.checkpoints[id], bt.config.Period, b.Publisher.Connect(), checkch, stopch)
 	}
 
 	// publish events
-	bt.client = b.Publisher.Connect()
-	updateTicker := time.NewTicker(30 * time.Second)
 	for {
 		select {
 		case <-bt.done:
@@ -87,24 +87,21 @@ func (bt *Condorbeat) Run(b *beat.Beat) error {
 			}
 			logp.Debug("beater", "exiting")
 			return nil
-		case <-updateTicker.C:
+		case checkpoint := <-checkch:
+			for k, v := range checkpoint {
+				bt.checkpoints[k] = v
+			}
+			logp.Debug("beater", "checkpoints: %s", bt.checkpointString())
 			logp.Info("saving checkpoints to file %s", bt.checkpointFilePath)
 			err := bt.saveCheckpoints(bt.checkpointFilePath)
 			if err != nil {
 				logp.Err("error saving checkpoints: %s", err)
 			}
-		case event := <-eventch:
-			logp.Debug("beater", "%v", event)
-			bt.client.PublishEvent(event, publisher.Sync)
-			logp.Info("Event sent")
-			bt.checkpoints[event["beat"].(common.MapStr)["collector_id"].(string)] = event["@timestamp"].(common.Time)
-			logp.Debug("beater", "checkpoints: %s", bt.checkpointString())
 		}
 	}
 }
 
 func (bt *Condorbeat) Stop() {
-	bt.client.Close()
 	close(bt.done)
 }
 
@@ -156,11 +153,12 @@ func getSchedds(pool string) ([]string, error) {
 	return schedds, nil
 }
 
-func runPeriodicCommand(id string, cmd *htcondor.Command, checkpoint common.Time, period time.Duration, events chan common.MapStr, stop chan bool) {
+func runPeriodicCommand(id string, cmd *htcondor.Command, checkpoint common.Time, period time.Duration, client publisher.Client, check chan Checkpoint, stop chan bool) {
+	defer client.Close()
 	ticker := time.NewTicker(period)
 	baseConstraint := cmd.Constraint
 	for {
-		logp.Debug("collector", "waiting...")
+		logp.Debug("collector", "sleeping %s...", period.String())
 		select {
 		case <-stop:
 			logp.Debug("collector", "exiting")
@@ -188,10 +186,11 @@ func runPeriodicCommand(id string, cmd *htcondor.Command, checkpoint common.Time
 			for k, v := range ad {
 				event[k] = v.Value
 			}
-			logp.Debug("collector", "sending event")
-			events <- event
+			logp.Debug("collector", "publishing event")
+			client.PublishEvent(event, publisher.Sync)
 			if time.Time(endtime).After(time.Time(checkpoint)) {
 				checkpoint = endtime
+				check <- Checkpoint{id: checkpoint}
 			}
 		}
 	}
