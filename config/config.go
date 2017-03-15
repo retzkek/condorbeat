@@ -6,11 +6,12 @@ package config
 import "time"
 
 type Config struct {
-	Period  time.Duration `config:"period"`
-	Pool    string        `config:"pool"`
-	Queue   queueConfig   `config:"queue"`
-	History historyConfig `config:"history"`
-	Status  statusConfig  `config:"status"`
+	Period         time.Duration `config:"period"`
+	Pool           string        `config:"pool"`
+	CheckpointFile string        `config:"checkpoint_file"`
+	Queue          queueConfig   `config:"queue"`
+	History        historyConfig `config:"history"`
+	Status         statusConfig  `config:"status"`
 }
 
 type queueConfig struct {
@@ -19,10 +20,9 @@ type queueConfig struct {
 }
 
 type historyConfig struct {
-	Classads       bool   `config:"classads"`
-	Metrics        bool   `config:"metrics"`
-	Limit          int    `config:"limit"`
-	CheckpointFile string `config:"checkpoint_file"`
+	Classads bool `config:"classads"`
+	Metrics  bool `config:"metrics"`
+	Limit    int  `config:"limit"`
 }
 
 type statusConfig struct {
@@ -35,17 +35,17 @@ type statusConfig struct {
 }
 
 var DefaultConfig = Config{
-	Period: 60 * time.Second,
-	Pool:   "",
+	Period:         60 * time.Second,
+	Pool:           "",
+	CheckpointFile: "checkpoints",
 	Queue: queueConfig{
 		Classads: true,
 		Metrics:  true,
 	},
 	History: historyConfig{
-		Classads:       true,
-		Metrics:        true,
-		Limit:          500,
-		CheckpointFile: "checkpoints",
+		Classads: true,
+		Metrics:  true,
+		Limit:    500,
 	},
 	Status: statusConfig{
 		Collector:      true,

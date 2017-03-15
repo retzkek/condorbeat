@@ -35,7 +35,7 @@ func New(b *beat.Beat, cfg *common.Config) (beat.Beater, error) {
 	bt := &Condorbeat{
 		done:               make(chan struct{}),
 		config:             config,
-		checkpointFilePath: b.Config.Path.Resolve(paths.Data, config.History.CheckpointFile),
+		checkpointFilePath: b.Config.Path.Resolve(paths.Data, config.CheckpointFile),
 	}
 
 	logp.Info("loading checkpoints from file %s", bt.checkpointFilePath)
