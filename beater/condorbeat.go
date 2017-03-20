@@ -1,7 +1,6 @@
 package beater
 
 import (
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -74,7 +73,7 @@ func (bt *Condorbeat) Run(b *beat.Beat) error {
 	if bt.config.History.Classads || bt.config.History.Metrics {
 		for _, schedd := range schedds {
 			wg.Add(1)
-			id := base64.StdEncoding.EncodeToString([]byte("condor_history-" + schedd))
+			id := "condor_history-" + bt.config.Pool + "-" + schedd
 			cmd := &htcondor.Command{
 				Command: "condor_history",
 				Pool:    bt.config.Pool,
@@ -82,7 +81,7 @@ func (bt *Condorbeat) Run(b *beat.Beat) error {
 				Limit:   bt.config.History.Limit,
 				Args:    []string{"-forwards"},
 			}
-			go bt.collectHistory(bt.config.Pool, cmd, bt.checkpoints[id], bt.config.Period, b.Publisher.Connect(), checkch, &wg)
+			go bt.collectHistory(id, cmd, bt.checkpoints[id], bt.config.Period, b.Publisher.Connect(), checkch, &wg)
 		}
 	}
 	// launch status collectors
@@ -154,11 +153,7 @@ func (bt *Condorbeat) saveCheckpoints(filePath string) error {
 
 func (bt *Condorbeat) checkpointString() string {
 	str := "{"
-	for k, c := range bt.checkpoints {
-		name, err := base64.StdEncoding.DecodeString(k)
-		if err != nil {
-			name = []byte(k)
-		}
+	for name, c := range bt.checkpoints {
 		str += string(name) + ":" + time.Time(c).String() + ", "
 	}
 	str += "}"
