@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/elastic/beats/libbeat/beat"
@@ -61,18 +62,18 @@ func (bt *Condorbeat) Run(b *beat.Beat) error {
 	}
 
 	checkch := make(chan Checkpoint)
-	stopchs := make([]*chan bool, 0)
+	var wg sync.WaitGroup
 	// launch queue collectors
 	if bt.config.Queue.Classads || bt.config.Queue.Metrics {
 		for _, schedd := range schedds {
-			stopch := make(chan bool)
-			stopchs = append(stopchs, &stopch)
-			go collectQueue(bt.config.Pool, schedd, bt.config.Period, b.Publisher.Connect(), stopch)
+			wg.Add(1)
+			go bt.collectQueue(bt.config.Pool, schedd, bt.config.Period, b.Publisher.Connect(), &wg)
 		}
 	}
 	// launch history collectors
 	if bt.config.History.Classads || bt.config.History.Metrics {
 		for _, schedd := range schedds {
+			wg.Add(1)
 			id := base64.StdEncoding.EncodeToString([]byte("condor_history-" + schedd))
 			cmd := &htcondor.Command{
 				Command: "condor_history",
@@ -81,41 +82,33 @@ func (bt *Condorbeat) Run(b *beat.Beat) error {
 				Limit:   bt.config.History.Limit,
 				Args:    []string{"-forwards"},
 			}
-			stopch := make(chan bool)
-			stopchs = append(stopchs, &stopch)
-			go collectHistory(bt.config.Pool, cmd, bt.checkpoints[id], bt.config.Period, b.Publisher.Connect(), checkch, stopch)
+			go bt.collectHistory(bt.config.Pool, cmd, bt.checkpoints[id], bt.config.Period, b.Publisher.Connect(), checkch, &wg)
 		}
 	}
 	// launch status collectors
 	if bt.config.Status.Collector {
-		stopch := make(chan bool)
-		stopchs = append(stopchs, &stopch)
-		go collectStatus(bt.config.Pool, "collector", bt.config.Period, b.Publisher.Connect(), stopch)
+		wg.Add(1)
+		go bt.collectStatus(bt.config.Pool, "collector", bt.config.Period, b.Publisher.Connect(), &wg)
 	}
 	if bt.config.Status.Schedd {
-		stopch := make(chan bool)
-		stopchs = append(stopchs, &stopch)
-		go collectStatus(bt.config.Pool, "schedd", bt.config.Period, b.Publisher.Connect(), stopch)
+		wg.Add(1)
+		go bt.collectStatus(bt.config.Pool, "schedd", bt.config.Period, b.Publisher.Connect(), &wg)
 	}
 	if bt.config.Status.Negotiator {
-		stopch := make(chan bool)
-		stopchs = append(stopchs, &stopch)
-		go collectStatus(bt.config.Pool, "negotiator", bt.config.Period, b.Publisher.Connect(), stopch)
+		wg.Add(1)
+		go bt.collectStatus(bt.config.Pool, "negotiator", bt.config.Period, b.Publisher.Connect(), &wg)
 	}
 	if bt.config.Status.Startd {
-		stopch := make(chan bool)
-		stopchs = append(stopchs, &stopch)
-		go collectStatus(bt.config.Pool, "startd", bt.config.Period, b.Publisher.Connect(), stopch)
+		wg.Add(1)
+		go bt.collectStatus(bt.config.Pool, "startd", bt.config.Period, b.Publisher.Connect(), &wg)
 	}
 
 	// wait loop
 	for {
 		select {
 		case <-bt.done:
-			logp.Debug("beater", "stopping collectors...")
-			for _, ch := range stopchs {
-				*ch <- true
-			}
+			logp.Debug("beater", "waiting for collectors to stop")
+			wg.Wait()
 			logp.Debug("beater", "exiting")
 			return nil
 		case checkpoint := <-checkch:
@@ -184,7 +177,8 @@ func getSchedds(pool string) ([]string, error) {
 	return schedds, nil
 }
 
-func collectQueue(pool, name string, period time.Duration, client publisher.Client, stop chan bool) {
+func (bt *Condorbeat) collectQueue(pool, name string, period time.Duration, client publisher.Client, done *sync.WaitGroup) {
+	defer done.Done()
 	defer client.Close()
 	id := "condor_q-" + pool + "-" + name
 	cmd := &htcondor.Command{
@@ -196,7 +190,7 @@ func collectQueue(pool, name string, period time.Duration, client publisher.Clie
 	for {
 		logp.Debug("collector", "%s sleeping %s...", id, period.String())
 		select {
-		case <-stop:
+		case <-bt.done:
 			logp.Debug("collector", "%s exiting", id)
 			return
 		case <-ticker.C:
@@ -224,7 +218,8 @@ func collectQueue(pool, name string, period time.Duration, client publisher.Clie
 	}
 }
 
-func collectHistory(id string, cmd *htcondor.Command, checkpoint common.Time, period time.Duration, client publisher.Client, check chan Checkpoint, stop chan bool) {
+func (bt *Condorbeat) collectHistory(id string, cmd *htcondor.Command, checkpoint common.Time, period time.Duration, client publisher.Client, check chan Checkpoint, done *sync.WaitGroup) {
+	defer done.Done()
 	defer client.Close()
 	ticker := time.NewTicker(period)
 	baseConstraint := cmd.Constraint
@@ -232,7 +227,7 @@ func collectHistory(id string, cmd *htcondor.Command, checkpoint common.Time, pe
 	for {
 		logp.Debug("collector", "%s sleeping %s...", id, period.String())
 		select {
-		case <-stop:
+		case <-bt.done:
 			logp.Debug("collector", "%s exiting", id)
 			return
 		case <-ticker.C:
@@ -275,7 +270,8 @@ func collectHistory(id string, cmd *htcondor.Command, checkpoint common.Time, pe
 	}
 }
 
-func collectStatus(pool, daemonType string, period time.Duration, client publisher.Client, stop chan bool) {
+func (bt *Condorbeat) collectStatus(pool, daemonType string, period time.Duration, client publisher.Client, done *sync.WaitGroup) {
+	defer done.Done()
 	defer client.Close()
 	id := "condor_status-" + pool + "-" + daemonType
 	cmd := &htcondor.Command{
@@ -287,7 +283,7 @@ func collectStatus(pool, daemonType string, period time.Duration, client publish
 	for {
 		logp.Debug("collector", "%s sleeping %s...", id, period.String())
 		select {
-		case <-stop:
+		case <-bt.done:
 			logp.Debug("collector", "%s exiting", id)
 			return
 		case <-ticker.C:
