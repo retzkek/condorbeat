@@ -186,7 +186,7 @@ func getSchedds(pool string) ([]string, error) {
 
 func collectQueue(pool, name string, period time.Duration, client publisher.Client, stop chan bool) {
 	defer client.Close()
-	id := base64.StdEncoding.EncodeToString([]byte("condor_q-" + pool + "-" + name))
+	id := "condor_q-" + pool + "-" + name
 	cmd := &htcondor.Command{
 		Command: "condor_q",
 		Pool:    pool,
@@ -194,10 +194,10 @@ func collectQueue(pool, name string, period time.Duration, client publisher.Clie
 	}
 	ticker := time.NewTicker(period)
 	for {
-		logp.Debug("collector", "sleeping %s...", period.String())
+		logp.Debug("collector", "%s sleeping %s...", id, period.String())
 		select {
 		case <-stop:
-			logp.Debug("collector", "exiting")
+			logp.Debug("collector", "%s exiting", id)
 			return
 		case <-ticker.C:
 		}
@@ -207,7 +207,8 @@ func collectQueue(pool, name string, period time.Duration, client publisher.Clie
 			logp.Err("error running condor command %s: %s", cmd.Command, err)
 			continue // just retry next tick
 		}
-		for _, ad := range ads {
+		events := make([]common.MapStr, len(ads))
+		for i, ad := range ads {
 			event := common.MapStr{
 				"@timestamp": common.Time(time.Now()),
 				"type":       "job",
@@ -216,9 +217,10 @@ func collectQueue(pool, name string, period time.Duration, client publisher.Clie
 			for k, v := range ad {
 				event[k] = v.Value
 			}
-			logp.Debug("collector", "publishing event")
-			client.PublishEvent(event)
+			events[i] = event
 		}
+		logp.Debug("collector", "%s publishing events", id)
+		client.PublishEvents(events)
 	}
 }
 
@@ -226,11 +228,12 @@ func collectHistory(id string, cmd *htcondor.Command, checkpoint common.Time, pe
 	defer client.Close()
 	ticker := time.NewTicker(period)
 	baseConstraint := cmd.Constraint
+	var newCheckpoint common.Time
 	for {
-		logp.Debug("collector", "sleeping %s...", period.String())
+		logp.Debug("collector", "%s sleeping %s...", id, period.String())
 		select {
 		case <-stop:
-			logp.Debug("collector", "exiting")
+			logp.Debug("collector", "%s exiting", id)
 			return
 		case <-ticker.C:
 		}
@@ -245,7 +248,8 @@ func collectHistory(id string, cmd *htcondor.Command, checkpoint common.Time, pe
 			logp.Err("error running condor command %s: %s", cmd.Command, err)
 			continue // just retry next tick
 		}
-		for _, ad := range ads {
+		events := make([]common.MapStr, len(ads))
+		for i, ad := range ads {
 			endtime := common.Time(time.Unix(ad["EnteredCurrentStatus"].Value.(int64), 0))
 			event := common.MapStr{
 				"@timestamp": endtime,
@@ -255,19 +259,25 @@ func collectHistory(id string, cmd *htcondor.Command, checkpoint common.Time, pe
 			for k, v := range ad {
 				event[k] = v.Value
 			}
-			logp.Debug("collector", "publishing event")
 			client.PublishEvent(event)
 			if time.Time(endtime).After(time.Time(checkpoint)) {
-				checkpoint = endtime
-				check <- Checkpoint{id: checkpoint}
+				newCheckpoint = endtime
 			}
+			events[i] = event
 		}
+		logp.Debug("collector", "%s publishing events", id)
+		ok := client.PublishEvents(events, publisher.Guaranteed, publisher.Sync)
+		if !ok {
+			return
+		}
+		checkpoint = newCheckpoint
+		check <- Checkpoint{id: checkpoint}
 	}
 }
 
 func collectStatus(pool, daemonType string, period time.Duration, client publisher.Client, stop chan bool) {
 	defer client.Close()
-	id := base64.StdEncoding.EncodeToString([]byte("condor_status-" + pool + "-" + daemonType))
+	id := "condor_status-" + pool + "-" + daemonType
 	cmd := &htcondor.Command{
 		Command: "condor_status",
 		Pool:    pool,
@@ -275,10 +285,10 @@ func collectStatus(pool, daemonType string, period time.Duration, client publish
 	}
 	ticker := time.NewTicker(period)
 	for {
-		logp.Debug("collector", "sleeping %s...", period.String())
+		logp.Debug("collector", "%s sleeping %s...", id, period.String())
 		select {
 		case <-stop:
-			logp.Debug("collector", "exiting")
+			logp.Debug("collector", "%s exiting", id)
 			return
 		case <-ticker.C:
 		}
@@ -288,7 +298,8 @@ func collectStatus(pool, daemonType string, period time.Duration, client publish
 			logp.Err("error running condor command %s: %s", cmd.Command, err)
 			continue // just retry next tick
 		}
-		for _, ad := range ads {
+		events := make([]common.MapStr, len(ads))
+		for i, ad := range ads {
 			event := common.MapStr{
 				"@timestamp": common.Time(time.Now()),
 				"type":       "status",
@@ -297,8 +308,9 @@ func collectStatus(pool, daemonType string, period time.Duration, client publish
 			for k, v := range ad {
 				event[k] = v.Value
 			}
-			logp.Debug("collector", "publishing event")
-			client.PublishEvent(event)
+			events[i] = event
 		}
+		logp.Debug("collector", "%s publishing events", id)
+		client.PublishEvents(events)
 	}
 }
