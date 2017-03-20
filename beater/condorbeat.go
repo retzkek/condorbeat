@@ -183,13 +183,6 @@ func (bt *Condorbeat) collectQueue(pool, name string, period time.Duration, clie
 	}
 	ticker := time.NewTicker(period)
 	for {
-		logp.Debug("collector", "%s sleeping %s...", id, period.String())
-		select {
-		case <-bt.done:
-			logp.Debug("collector", "%s exiting", id)
-			return
-		case <-ticker.C:
-		}
 		logp.Debug("collector", "running command %s with args %v", cmd.Command, cmd.MakeArgs())
 		ads, err := cmd.Run()
 		if err != nil {
@@ -210,6 +203,14 @@ func (bt *Condorbeat) collectQueue(pool, name string, period time.Duration, clie
 		}
 		logp.Debug("collector", "%s publishing events", id)
 		client.PublishEvents(events)
+
+		logp.Debug("collector", "%s sleeping %s...", id, period.String())
+		select {
+		case <-bt.done:
+			logp.Debug("collector", "%s exiting", id)
+			return
+		case <-ticker.C:
+		}
 	}
 }
 
@@ -220,13 +221,6 @@ func (bt *Condorbeat) collectHistory(id string, cmd *htcondor.Command, checkpoin
 	baseConstraint := cmd.Constraint
 	var newCheckpoint common.Time
 	for {
-		logp.Debug("collector", "%s sleeping %s...", id, period.String())
-		select {
-		case <-bt.done:
-			logp.Debug("collector", "%s exiting", id)
-			return
-		case <-ticker.C:
-		}
 		if baseConstraint == "" {
 			cmd.Constraint = fmt.Sprintf("EnteredCurrentStatus > %d", time.Time(checkpoint).Unix())
 		} else {
@@ -258,10 +252,19 @@ func (bt *Condorbeat) collectHistory(id string, cmd *htcondor.Command, checkpoin
 		logp.Debug("collector", "%s publishing events", id)
 		ok := client.PublishEvents(events, publisher.Guaranteed, publisher.Sync)
 		if !ok {
-			return
+			logp.Debug("collector", "%s error publishing events", id)
+		} else {
+			checkpoint = newCheckpoint
+			check <- Checkpoint{id: checkpoint}
 		}
-		checkpoint = newCheckpoint
-		check <- Checkpoint{id: checkpoint}
+
+		logp.Debug("collector", "%s sleeping %s...", id, period.String())
+		select {
+		case <-bt.done:
+			logp.Debug("collector", "%s exiting", id)
+			return
+		case <-ticker.C:
+		}
 	}
 }
 
@@ -276,13 +279,6 @@ func (bt *Condorbeat) collectStatus(pool, daemonType string, period time.Duratio
 	}
 	ticker := time.NewTicker(period)
 	for {
-		logp.Debug("collector", "%s sleeping %s...", id, period.String())
-		select {
-		case <-bt.done:
-			logp.Debug("collector", "%s exiting", id)
-			return
-		case <-ticker.C:
-		}
 		logp.Debug("collector", "running command %s with args %v", cmd.Command, cmd.MakeArgs())
 		ads, err := cmd.Run()
 		if err != nil {
@@ -303,5 +299,13 @@ func (bt *Condorbeat) collectStatus(pool, daemonType string, period time.Duratio
 		}
 		logp.Debug("collector", "%s publishing events", id)
 		client.PublishEvents(events)
+
+		logp.Debug("collector", "%s sleeping %s...", id, period.String())
+		select {
+		case <-bt.done:
+			logp.Debug("collector", "%s exiting", id)
+			return
+		case <-ticker.C:
+		}
 	}
 }
