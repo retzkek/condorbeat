@@ -250,7 +250,7 @@ func (bt *Condorbeat) collectHistory(id string, cmd *htcondor.Command, checkpoin
 			events[i] = event
 		}
 		logp.Debug("collector", "%s publishing events", id)
-		ok := client.PublishEvents(events, publisher.Guaranteed, publisher.Sync)
+		ok := client.PublishEvents(events, publisher.Sync)
 		if !ok {
 			logp.Debug("collector", "%s error publishing events", id)
 		} else {
