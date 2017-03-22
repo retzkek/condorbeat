@@ -45,7 +45,7 @@ var DefaultConfig = Config{
 	History: historyConfig{
 		Classads: true,
 		Metrics:  true,
-		Limit:    500,
+		Limit:    10000,
 	},
 	Status: statusConfig{
 		Collector:      true,

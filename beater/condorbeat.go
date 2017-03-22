@@ -79,7 +79,7 @@ func (bt *Condorbeat) Run(b *beat.Beat) error {
 				Pool:    bt.config.Pool,
 				Name:    schedd,
 				Limit:   bt.config.History.Limit,
-				Args:    []string{"-forwards"},
+				//Args:    []string{"-forwards"},
 			}
 			go bt.collectHistory(id, cmd, bt.checkpoints[id], bt.config.Period, b.Publisher.Connect(), checkch, &wg)
 		}

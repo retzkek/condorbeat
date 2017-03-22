@@ -21,8 +21,10 @@ condorbeat:
     classads: true
     # Calculate job aggregate metrics - type "job_metrics"
     metrics: true
-    # Number of job histories to query at a time
-    limit: 500
+    # Maximum number of job histories to fetch at a time.
+    # This needs to be greated than the number of jobs you expect to finish during
+    # a query period!
+    limit: 10000 
   # Collect daemon information (condor_status) - type "status"
   status:
     collector: true
