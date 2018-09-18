@@ -1,3 +1,4 @@
+import os
 import sys
 import time
 import unittest
@@ -25,6 +26,33 @@ class Test(WriteReadTest):
         wineventlog - Read one classic event
         """
         msg = "Hello world!"
+        self.write_event_log(msg)
+        evts = self.read_events()
+        self.assertTrue(len(evts), 1)
+        self.assert_common_fields(evts[0], msg=msg, extra={
+            "keywords": ["Classic"],
+            "opcode": "Info",
+        })
+
+    def test_resume_reading_events(self):
+        """
+        wineventlog - Resume reading events
+        """
+        msg = "First event"
+        self.write_event_log(msg)
+        evts = self.read_events()
+        self.assertTrue(len(evts), 1)
+        self.assert_common_fields(evts[0], msg=msg, extra={
+            "keywords": ["Classic"],
+            "opcode": "Info",
+        })
+
+        # remove the output file, otherwise there is a race condition
+        # in read_events() below where it reads the results of the previous
+        # execution
+        os.unlink(os.path.join(self.working_dir, "output", self.beat_name))
+
+        msg = "Second event"
         self.write_event_log(msg)
         evts = self.read_events()
         self.assertTrue(len(evts), 1)
@@ -142,6 +170,7 @@ class Test(WriteReadTest):
         self.assertTrue(len(evts), 1)
         self.assert_common_fields(evts[0], msg=msg)
         self.assertTrue("xml" in evts[0])
+        self.assertTrue(evts[0]["xml"].endswith('</Event>'), 'xml value: "{}"'.format(evts[0]["xml"]))
 
     def test_query_event_id(self):
         """
@@ -306,3 +335,44 @@ class Test(WriteReadTest):
         })
         self.assertTrue(len(evts), 1)
         self.assertEqual(evts[0]["message"], msg)
+
+    def test_registry_data(self):
+        """
+        wineventlog - Registry is updated
+        """
+        self.write_event_log("Hello world!")
+        evts = self.read_events()
+        self.assertTrue(len(evts), 1)
+
+        event_logs = self.read_registry(requireBookmark=True)
+        self.assertTrue(len(event_logs.keys()), 1)
+        self.assertIn(self.providerName, event_logs)
+        record_number = event_logs[self.providerName]["record_number"]
+        self.assertGreater(record_number, 0)
+
+    def test_processors(self):
+        """
+        wineventlog - Processors are applied
+        """
+        self.write_event_log("Hello world!")
+
+        config = {
+            "event_logs": [
+                {
+                    "name": self.providerName,
+                    "api": self.api,
+                    "extras": {
+                        "processors": [
+                            {
+                                "drop_fields": {
+                                    "fields": ["message"],
+                                }
+                            }
+                        ],
+                    },
+                }
+            ]
+        }
+        evts = self.read_events(config)
+        self.assertTrue(len(evts), 1)
+        self.assertNotIn("message", evts[0])

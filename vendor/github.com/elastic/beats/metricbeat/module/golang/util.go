@@ -2,8 +2,9 @@ package golang
 
 import (
 	"bytes"
-	"github.com/elastic/beats/libbeat/logp"
 	"strings"
+
+	"github.com/elastic/beats/libbeat/logp"
 )
 
 /**
@@ -23,5 +24,4 @@ func GetCmdStr(v interface{}) interface{} {
 		logp.Debug("golang", "unexpected cmdline, %v, %v", t, v)
 		return v
 	}
-
 }

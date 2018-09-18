@@ -4,11 +4,15 @@
 # keyword to sniff on all connected interfaces.
 packetbeat.interfaces.device: {{ iface_device|default("any") }}
 
+{% if bpf_filter %}
+packetbeat.interfaces.bpf_filter: {{ bpf_filter }}
+{% endif %}
+
 {% if flows %}
 #================================== Flows =====================================
 # Set network flow timeout. Flow is killed if no packet is received before being
 # timed out.
-packetbeat.flows.timeout: 10s
+packetbeat.flows.timeout: 2s
 
 # Configure reporting period. If set to -1, only killed flows will be reported
 packetbeat.flows.period: -1s
@@ -77,6 +81,7 @@ packetbeat.protocols:
   ]
 {%- endif %}
 {%- if http_max_message_size %}  max_message_size: {{ http_max_message_size }} {%- endif %}
+{%- if http_transaction_timeout %}  transaction_timeout: {{ http_transaction_timeout }} {%- endif %}
 
 - type: memcache
   ports: [{{ memcache_ports|default([11211])|join(", ") }}]
@@ -112,12 +117,10 @@ packetbeat.protocols:
   ports: [{{ thrift_ports|default([9090])|join(", ") }}]
   transport_type: "{{ thrift_transport_type|default('socket') }}"
 {% if thrift_idl_files %}
-  idl_files: [
-      {%- for file in thrift_idl_files -%}
-              "{{ beat.working_dir + '/' + file }}"
-              {%- if not loop.last %}, {% endif -%}
-      {%- endfor -%}
-  ]
+  idl_files:
+  {%- for file in thrift_idl_files %}
+  - '{{ beat.working_dir + '/' + file }}'
+  {%- endfor -%}
 {%- endif %}
 {% if thrift_send_request %}  send_request: true{%- endif %}
 {% if thrift_send_response %}  send_response: true{%- endif %}
@@ -170,15 +173,7 @@ tags: [
   {%- endif -%}
 ]
 
-{% if geoip_paths is not none %}
-geoip:
-  paths: [
-      {%- for path in geoip_paths -%}
-          "{{ beat.working_dir + '/' + path }}"
-          {%- if not loop.last %}, {% endif -%}
-      {%- endfor -%}
-  ]
-{%- endif %}
+packetbeat.shutdown_timeout: {{ shutdown_timeout|default('400ms') }}
 
 {%- if processors %}
 
@@ -186,10 +181,10 @@ geoip:
 
 processors:
 {%- for processor in processors %}
-{%- for name, settings in processor.iteritems() %}
+{%- for name, settings in processor.items() %}
 - {{name}}:
   {%- if settings %}
-  {%- for k, v in settings.iteritems() %}
+  {%- for k, v in settings.items() %}
     {{k}}:
       {{v | default([])}}
   {%- endfor %}
@@ -199,14 +194,27 @@ processors:
 
 {%- endif %}
 
+#================================ Queue =====================================
+
+queue.mem:
+  events: 4096
+  flush.min_events: 8
+  flush.timeout: 0.1s
+
 #================================ Outputs =====================================
 
 # Configure what outputs to use when sending the data collected by the beat.
 # Multiple outputs may be used.
 
+{%- if elasticsearch %}
+#------------------------------- Elasticsearch output ----------------------------
+output.elasticsearch:
+  hosts: ["{{ elasticsearch.host }}"]
+{%- else %}
 #------------------------------- File output ----------------------------------
 output.file:
   path: {{ output_file_path|default(beat.working_dir + "/output") }}
   filename: "{{ output_file_filename|default("packetbeat") }}"
-  rotate_every_kb: 1000
+  rotate_every_kb: {{ rotate_every_kb | default(1000) }}
   #number_of_files: 7
+{%- endif %}

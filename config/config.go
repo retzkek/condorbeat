@@ -6,32 +6,26 @@ package config
 import "time"
 
 type Config struct {
-	Period         time.Duration `config:"period"`
-	Pool           string        `config:"pool"`
-	CheckpointFile string        `config:"checkpoint_file"`
-	Queue          queueConfig   `config:"queue"`
-	History        historyConfig `config:"history"`
-	Status         statusConfig  `config:"status"`
+	Period         time.Duration  `config:"period"`
+	Pool           string         `config:"pool"`
+	CheckpointFile string         `config:"checkpoint_file"`
+	Queue          queueConfig    `config:"queue"`
+	History        historyConfig  `config:"history"`
+	Status         []statusConfig `config:"status"`
 }
 
 type queueConfig struct {
 	Classads bool `config:"classads"`
-	Metrics  bool `config:"metrics"`
 }
 
 type historyConfig struct {
 	Classads bool `config:"classads"`
-	Metrics  bool `config:"metrics"`
 	Limit    int  `config:"limit"`
 }
 
 type statusConfig struct {
-	Collector      bool `config:"collector"`
-	Schedd         bool `config:"schedd"`
-	Negotiator     bool `config:"negotiator"`
-	Startd         bool `config:"startd"`
-	SlotMetrics    bool `config:"slot_metrics"`
-	GlideinMetrics bool `config:"glidein_metrics"`
+	MyType     string `config:"type"`
+	Constraint string `config:"constraint"`
 }
 
 var DefaultConfig = Config{
@@ -40,19 +34,14 @@ var DefaultConfig = Config{
 	CheckpointFile: "checkpoints",
 	Queue: queueConfig{
 		Classads: true,
-		Metrics:  true,
 	},
 	History: historyConfig{
 		Classads: true,
-		Metrics:  true,
 		Limit:    10000,
 	},
-	Status: statusConfig{
-		Collector:      true,
-		Schedd:         true,
-		Negotiator:     true,
-		Startd:         false,
-		SlotMetrics:    true,
-		GlideinMetrics: false,
+	Status: []statusConfig{
+		{MyType: "Collector"},
+		{MyType: "Scheduler"},
+		{MyType: "Negotiator"},
 	},
 }

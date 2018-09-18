@@ -11,7 +11,6 @@ import (
 	"github.com/elastic/beats/libbeat/common"
 	"github.com/elastic/beats/libbeat/logp"
 	"github.com/elastic/beats/libbeat/paths"
-	"github.com/elastic/beats/libbeat/publisher"
 
 	"github.com/retzkek/condorbeat/config"
 	htcondor "github.com/retzkek/htcondor-go"
@@ -20,12 +19,12 @@ import (
 type Condorbeat struct {
 	done               chan struct{}
 	config             config.Config
-	client             publisher.Client
+	client             beat.Client
 	checkpointFilePath string
 	checkpoints        Checkpoint
 }
 
-type Checkpoint map[string]common.Time
+type Checkpoint map[string]time.Time
 
 // Creates beater
 func New(b *beat.Beat, cfg *common.Config) (beat.Beater, error) {
@@ -37,7 +36,7 @@ func New(b *beat.Beat, cfg *common.Config) (beat.Beater, error) {
 	bt := &Condorbeat{
 		done:               make(chan struct{}),
 		config:             config,
-		checkpointFilePath: b.Config.Path.Resolve(paths.Data, config.CheckpointFile),
+		checkpointFilePath: paths.Resolve(paths.Data, config.CheckpointFile),
 	}
 
 	logp.Info("loading checkpoints from file %s", bt.checkpointFilePath)
@@ -60,17 +59,24 @@ func (bt *Condorbeat) Run(b *beat.Beat) error {
 		}
 	}
 
+	var err error
+	bt.client, err = b.Publisher.Connect()
+	if err != nil {
+		return err
+	}
+	defer bt.client.Close()
+
 	checkch := make(chan Checkpoint)
 	var wg sync.WaitGroup
 	// launch queue collectors
-	if bt.config.Queue.Classads || bt.config.Queue.Metrics {
+	if bt.config.Queue.Classads {
 		for _, schedd := range schedds {
 			wg.Add(1)
-			go bt.collectQueue(bt.config.Pool, schedd, bt.config.Period, b.Publisher.Connect(), &wg)
+			go bt.collectQueue(bt.config.Pool, schedd, bt.config.Period, &wg)
 		}
 	}
 	// launch history collectors
-	if bt.config.History.Classads || bt.config.History.Metrics {
+	if bt.config.History.Classads {
 		for _, schedd := range schedds {
 			wg.Add(1)
 			id := "condor_history-" + bt.config.Pool + "-" + schedd
@@ -81,25 +87,13 @@ func (bt *Condorbeat) Run(b *beat.Beat) error {
 				Limit:   bt.config.History.Limit,
 				//Args:    []string{"-forwards"},
 			}
-			go bt.collectHistory(id, cmd, bt.checkpoints[id], bt.config.Period, b.Publisher.Connect(), checkch, &wg)
+			go bt.collectHistory(id, cmd, bt.checkpoints[id], bt.config.Period, checkch, &wg)
 		}
 	}
 	// launch status collectors
-	if bt.config.Status.Collector {
+	for _, c := range bt.config.Status {
 		wg.Add(1)
-		go bt.collectStatus(bt.config.Pool, "collector", bt.config.Period, b.Publisher.Connect(), &wg)
-	}
-	if bt.config.Status.Schedd {
-		wg.Add(1)
-		go bt.collectStatus(bt.config.Pool, "schedd", bt.config.Period, b.Publisher.Connect(), &wg)
-	}
-	if bt.config.Status.Negotiator {
-		wg.Add(1)
-		go bt.collectStatus(bt.config.Pool, "negotiator", bt.config.Period, b.Publisher.Connect(), &wg)
-	}
-	if bt.config.Status.Startd {
-		wg.Add(1)
-		go bt.collectStatus(bt.config.Pool, "startd", bt.config.Period, b.Publisher.Connect(), &wg)
+		go bt.collectStatus(bt.config.Pool, c.MyType, c.Constraint, bt.config.Period, &wg)
 	}
 
 	// wait loop
@@ -132,7 +126,7 @@ func (bt *Condorbeat) loadCheckpoints(filePath string) error {
 	file, err := os.Open(filePath)
 	defer file.Close()
 	if os.IsNotExist(err) {
-		bt.checkpoints = make(map[string]common.Time)
+		bt.checkpoints = make(map[string]time.Time)
 		return nil
 	} else if err != nil {
 		return err
@@ -172,9 +166,8 @@ func getSchedds(pool string) ([]string, error) {
 	return schedds, nil
 }
 
-func (bt *Condorbeat) collectQueue(pool, name string, period time.Duration, client publisher.Client, done *sync.WaitGroup) {
+func (bt *Condorbeat) collectQueue(pool, name string, period time.Duration, done *sync.WaitGroup) {
 	defer done.Done()
-	defer client.Close()
 	id := "condor_q-" + pool + "-" + name
 	cmd := &htcondor.Command{
 		Command: "condor_q",
@@ -187,22 +180,24 @@ func (bt *Condorbeat) collectQueue(pool, name string, period time.Duration, clie
 		ads, err := cmd.Run()
 		if err != nil {
 			logp.Err("error running condor command %s: %s", cmd.Command, err)
-			continue // just retry next tick
-		}
-		events := make([]common.MapStr, len(ads))
-		for i, ad := range ads {
-			event := common.MapStr{
-				"@timestamp": common.Time(time.Now()),
-				"type":       "job",
-				"beat":       common.MapStr{"collector_id": id},
+		} else {
+			events := make([]beat.Event, len(ads))
+			for i, ad := range ads {
+				event := beat.Event{
+					Timestamp: time.Now(),
+					Fields: common.MapStr{
+						"type":         "job",
+						"collector_id": id,
+					},
+				}
+				for k, v := range ad {
+					event.Fields[k] = v.Value
+				}
+				events[i] = event
 			}
-			for k, v := range ad {
-				event[k] = v.Value
-			}
-			events[i] = event
+			logp.Debug("collector", "%s publishing %d events", id, len(events))
+			bt.client.PublishAll(events)
 		}
-		logp.Debug("collector", "%s publishing events", id)
-		client.PublishEvents(events)
 
 		logp.Debug("collector", "%s sleeping %s...", id, period.String())
 		select {
@@ -214,46 +209,44 @@ func (bt *Condorbeat) collectQueue(pool, name string, period time.Duration, clie
 	}
 }
 
-func (bt *Condorbeat) collectHistory(id string, cmd *htcondor.Command, checkpoint common.Time, period time.Duration, client publisher.Client, check chan Checkpoint, done *sync.WaitGroup) {
+func (bt *Condorbeat) collectHistory(id string, cmd *htcondor.Command, checkpoint time.Time, period time.Duration, check chan Checkpoint, done *sync.WaitGroup) {
 	defer done.Done()
-	defer client.Close()
 	ticker := time.NewTicker(period)
 	baseConstraint := cmd.Constraint
-	var newCheckpoint common.Time
+	var newCheckpoint time.Time
 	for {
 		if baseConstraint == "" {
-			cmd.Constraint = fmt.Sprintf("EnteredCurrentStatus > %d", time.Time(checkpoint).Unix())
+			cmd.Constraint = fmt.Sprintf("EnteredCurrentStatus > %d", checkpoint.Unix())
 		} else {
-			cmd.Constraint = fmt.Sprintf("%s && (EnteredCurrentStatus > %d)", baseConstraint, time.Time(checkpoint).Unix())
+			cmd.Constraint = fmt.Sprintf("%s && (EnteredCurrentStatus > %d)", baseConstraint, checkpoint.Unix())
 		}
 		logp.Debug("collector", "running command %s with args %v", cmd.Command, cmd.MakeArgs())
 		ads, err := cmd.Run()
 		if err != nil {
 			logp.Err("error running condor command %s: %s", cmd.Command, err)
-			continue // just retry next tick
-		}
-		events := make([]common.MapStr, len(ads))
-		for i, ad := range ads {
-			endtime := common.Time(time.Unix(ad["EnteredCurrentStatus"].Value.(int64), 0))
-			event := common.MapStr{
-				"@timestamp": endtime,
-				"type":       "job",
-				"beat":       common.MapStr{"collector_id": id},
-			}
-			for k, v := range ad {
-				event[k] = v.Value
-			}
-			client.PublishEvent(event)
-			if time.Time(endtime).After(time.Time(checkpoint)) {
-				newCheckpoint = endtime
-			}
-			events[i] = event
-		}
-		logp.Debug("collector", "%s publishing events", id)
-		ok := client.PublishEvents(events, publisher.Sync)
-		if !ok {
-			logp.Debug("collector", "%s error publishing events", id)
 		} else {
+			events := make([]beat.Event, len(ads))
+			for i, ad := range ads {
+				endtime := time.Unix(ad["EnteredCurrentStatus"].Value.(int64), 0)
+
+				if endtime.After(checkpoint) {
+					newCheckpoint = endtime
+				}
+
+				event := beat.Event{
+					Timestamp: endtime,
+					Fields: common.MapStr{
+						"type":         "job",
+						"collector_id": id,
+					},
+				}
+				for k, v := range ad {
+					event.Fields[k] = v.Value
+				}
+				events[i] = event
+			}
+			logp.Debug("collector", "%s publishing %d events", id, len(events))
+			bt.client.PublishAll(events)
 			checkpoint = newCheckpoint
 			check <- Checkpoint{id: checkpoint}
 		}
@@ -268,14 +261,19 @@ func (bt *Condorbeat) collectHistory(id string, cmd *htcondor.Command, checkpoin
 	}
 }
 
-func (bt *Condorbeat) collectStatus(pool, daemonType string, period time.Duration, client publisher.Client, done *sync.WaitGroup) {
+func (bt *Condorbeat) collectStatus(pool, daemonType string, constraint string, period time.Duration, done *sync.WaitGroup) {
 	defer done.Done()
-	defer client.Close()
 	id := "condor_status-" + pool + "-" + daemonType
+	myType := fmt.Sprintf("%s_status", daemonType)
+	cons := fmt.Sprintf("MyType==\"%s\"", daemonType)
+	if constraint != "" {
+		cons = fmt.Sprintf("(%s)&&(%s)", cons, constraint)
+	}
 	cmd := &htcondor.Command{
-		Command: "condor_status",
-		Pool:    pool,
-		Args:    []string{"-" + daemonType},
+		Command:    "condor_status",
+		Pool:       pool,
+		Args:       []string{"-any"},
+		Constraint: cons,
 	}
 	ticker := time.NewTicker(period)
 	for {
@@ -283,22 +281,24 @@ func (bt *Condorbeat) collectStatus(pool, daemonType string, period time.Duratio
 		ads, err := cmd.Run()
 		if err != nil {
 			logp.Err("error running condor command %s: %s", cmd.Command, err)
-			continue // just retry next tick
-		}
-		events := make([]common.MapStr, len(ads))
-		for i, ad := range ads {
-			event := common.MapStr{
-				"@timestamp": common.Time(time.Now()),
-				"type":       "status",
-				"beat":       common.MapStr{"collector_id": id},
+		} else {
+			events := make([]beat.Event, len(ads))
+			for i, ad := range ads {
+				event := beat.Event{
+					Timestamp: time.Now(),
+					Fields: common.MapStr{
+						"type":         myType,
+						"collector_id": id,
+					},
+				}
+				for k, v := range ad {
+					event.Fields[k] = v.Value
+				}
+				events[i] = event
 			}
-			for k, v := range ad {
-				event[k] = v.Value
-			}
-			events[i] = event
+			logp.Debug("collector", "%s publishing %d events", id, len(events))
+			bt.client.PublishAll(events)
 		}
-		logp.Debug("collector", "%s publishing events", id)
-		client.PublishEvents(events)
 
 		logp.Debug("collector", "%s sleeping %s...", id, period.String())
 		select {

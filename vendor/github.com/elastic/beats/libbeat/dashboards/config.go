@@ -1,6 +1,8 @@
 package dashboards
 
-type DashboardsConfig struct {
+import "time"
+
+type Config struct {
 	Enabled        bool   `config:"enabled"`
 	KibanaIndex    string `config:"kibana_index"`
 	Index          string `config:"index"`
@@ -10,14 +12,25 @@ type DashboardsConfig struct {
 	URL            string `config:"url"`
 	OnlyDashboards bool   `config:"only_dashboards"`
 	OnlyIndex      bool   `config:"only_index"`
-	Snapshot       bool   `config:"snapshot"`
-	SnapshotURL    string `config:"snapshot_url"`
+	AlwaysKibana   bool   `config:"always_kibana"`
+	Retry          *Retry `config:"retry"`
 }
 
-var defaultDashboardsConfig = DashboardsConfig{
-	KibanaIndex: ".kibana",
+type Retry struct {
+	Enabled  bool          `config:"enabled"`
+	Interval time.Duration `config:"interval"`
+	Maximum  uint          `config:"maximum"`
+}
+
+var defaultConfig = Config{
+	KibanaIndex:  ".kibana",
+	AlwaysKibana: false,
+	Retry: &Retry{
+		Enabled:  false,
+		Interval: time.Second,
+		Maximum:  0,
+	},
 }
 var (
-	defaultURLPattern  = "https://artifacts.elastic.co/downloads/beats/beats-dashboards/beats-dashboards-%s.zip"
-	snapshotURLPattern = "https://beats-nightlies.s3.amazonaws.com/dashboards/beats-dashboards-%s-SNAPSHOT.zip"
+	defaultDirectory = "kibana"
 )

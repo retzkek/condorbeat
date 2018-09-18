@@ -1,4 +1,4 @@
-#################### Condorbeat Configuration Example #########################
+################### Condorbeat Configuration Example #########################
 
 ############################# Condorbeat ######################################
 
@@ -6,32 +6,23 @@ condorbeat:
   # Defines how often the pool is queried
   period: 60s
   # HTCondor pool collector/central manager to query (blank for local pool)
-  pool: 
+  pool:
   # Name of checkpoints file (under data directory)
   checkpoint_file: checkpoints
   # Collect active job information (condor_q) - type "job"
   queue:
     # Collect job classads
     classads: true
-    # Calculate job aggregate metrics - type "job_metrics"
-    metrics: true
   # Collect completed job information (condor_history) - type "job"
   history:
     # Collect job classads
     classads: true
-    # Calculate job aggregate metrics - type "job_metrics"
-    metrics: true
     # Maximum number of job histories to fetch at a time.
     # This needs to be greated than the number of jobs you expect to finish during
     # a query period!
-    limit: 10000 
-  # Collect daemon information (condor_status) - type "status"
+    limit: 10000
+  # Collect daemon information (condor_status) - type "<type>_status"
   status:
-    collector: true
-    schedd: true
-    negotiator: true
-    startd: false
-    # Collect slot aggregate metrics - type "slot_metrics"
-    slot_metrics: true
-    # Collect glidein-specific slot metrics - type "glidein_metrics"
-    glidein_metrics: false
+    - type: Collector
+    - type: Scheduler
+    - type: Negotiator

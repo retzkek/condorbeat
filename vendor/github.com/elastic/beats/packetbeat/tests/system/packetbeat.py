@@ -30,7 +30,7 @@ class BaseTest(TestCase):
                        extra_args=[],
                        debug_selectors=[],
                        exit_code=0,
-                       wait_stop=0):
+                       real_time=False):
         """
         Executes packetbeat on an input pcap file.
         Waits for the process to finish before returning to
@@ -42,14 +42,15 @@ class BaseTest(TestCase):
 
         args = [cmd]
 
+        if not real_time:
+            args.extend(["-t"])
+
         args.extend([
             "-e",
             "-I", os.path.join(self.beat_path + "/tests/system/pcaps", pcap),
             "-c", os.path.join(self.working_dir, config),
-            "-t",
             "-systemTest",
             "-test.coverprofile", os.path.join(self.working_dir, "coverage.cov"),
-            "-waitstop", str(wait_stop),
         ])
 
         if extra_args:
@@ -63,12 +64,18 @@ class BaseTest(TestCase):
                                     stdout=outputfile,
                                     stderr=subprocess.STDOUT)
             actual_exit_code = proc.wait()
-            assert actual_exit_code == exit_code, "Expected exit code to be %d, but it was %d" % (
-                exit_code, actual_exit_code)
-            return actual_exit_code
+
+        if actual_exit_code != exit_code:
+            print("============ Log Output =====================")
+            with open(os.path.join(self.working_dir, output)) as f:
+                print(f.read())
+            print("============ Log End Output =====================")
+        assert actual_exit_code == exit_code, "Expected exit code to be %d, but it was %d" % (
+            exit_code, actual_exit_code)
+        return actual_exit_code
 
     def start_packetbeat(self,
-                         cmd="../../packetbeat.test",
+                         cmd=None,
                          config="packetbeat.yml",
                          output="packetbeat.log",
                          extra_args=[],
@@ -78,6 +85,9 @@ class BaseTest(TestCase):
         caller is responsible for stopping / waiting for the
         Proc instance.
         """
+        if cmd is None:
+            cmd = self.beat_path + "/packetbeat.test"
+
         args = [cmd,
                 "-e",
                 "-c", os.path.join(self.working_dir, config),
