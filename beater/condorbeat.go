@@ -173,6 +173,7 @@ func (bt *Condorbeat) collectQueue(pool, name string, period time.Duration, done
 		Command: "condor_q",
 		Pool:    pool,
 		Name:    name,
+		Args:    []string{"-allusers"},
 	}
 	ticker := time.NewTicker(period)
 	for {
