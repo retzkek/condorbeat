@@ -182,6 +182,7 @@ func (bt *Condorbeat) collectQueue(pool, name string, period time.Duration, done
 		ads := make(chan classad.ClassAd)
 		errors := make(chan error)
 		go cmd.Stream(ads, errors)
+		var n int64
 		for {
 			select {
 			case ad, ok := <-ads:
@@ -200,6 +201,7 @@ func (bt *Condorbeat) collectQueue(pool, name string, period time.Duration, done
 					event.Fields[k] = v.Value
 				}
 				bt.client.Publish(event)
+				n++
 			case err, ok := <-errors:
 				if !ok {
 					errors = nil
@@ -212,8 +214,7 @@ func (bt *Condorbeat) collectQueue(pool, name string, period time.Duration, done
 				break
 			}
 		}
-
-		logp.Debug("collector", "%s sleeping %s...", id, period.String())
+		logp.Debug("collector", "%s published %d events. sleeping %s", id, n, period.String())
 		select {
 		case <-bt.done:
 			logp.Debug("collector", "%s exiting", id)
@@ -238,6 +239,7 @@ func (bt *Condorbeat) collectHistory(id string, cmd *htcondor.Command, checkpoin
 		ads := make(chan classad.ClassAd)
 		errors := make(chan error)
 		go cmd.Stream(ads, errors)
+		var n int64
 		for {
 			select {
 			case ad, ok := <-ads:
@@ -262,6 +264,7 @@ func (bt *Condorbeat) collectHistory(id string, cmd *htcondor.Command, checkpoin
 					event.Fields[k] = v.Value
 				}
 				bt.client.Publish(event)
+				n++
 				checkpoint = newCheckpoint
 				check <- Checkpoint{id: checkpoint}
 			case err, ok := <-errors:
@@ -276,8 +279,7 @@ func (bt *Condorbeat) collectHistory(id string, cmd *htcondor.Command, checkpoin
 				break
 			}
 		}
-
-		logp.Debug("collector", "%s sleeping %s...", id, period.String())
+		logp.Debug("collector", "%s published %d events. sleeping %s", id, n, period.String())
 		select {
 		case <-bt.done:
 			logp.Debug("collector", "%s exiting", id)
@@ -307,6 +309,7 @@ func (bt *Condorbeat) collectStatus(pool, daemonType string, constraint string, 
 		ads := make(chan classad.ClassAd)
 		errors := make(chan error)
 		go cmd.Stream(ads, errors)
+		var n int64
 		for {
 			select {
 			case ad, ok := <-ads:
@@ -325,6 +328,7 @@ func (bt *Condorbeat) collectStatus(pool, daemonType string, constraint string, 
 					event.Fields[k] = v.Value
 				}
 				bt.client.Publish(event)
+				n++
 			case err, ok := <-errors:
 				if !ok {
 					errors = nil
@@ -337,8 +341,7 @@ func (bt *Condorbeat) collectStatus(pool, daemonType string, constraint string, 
 				break
 			}
 		}
-
-		logp.Debug("collector", "%s sleeping %s...", id, period.String())
+		logp.Debug("collector", "%s published %d events. sleeping %s", id, n, period.String())
 		select {
 		case <-bt.done:
 			logp.Debug("collector", "%s exiting", id)
