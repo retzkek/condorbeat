@@ -27,6 +27,73 @@ func TestReadClassAd_good(t *testing.T) {
 	}
 }
 
+func TestStreamClassAds_bad(t *testing.T) {
+	for _, s := range badClassads {
+		ch := make(chan ClassAd)
+		errors := make(chan error)
+		go StreamClassAds(strings.NewReader(s), ch, errors)
+		n := 0
+		for {
+			select {
+			case ad, ok := <-ch:
+				if ok {
+					t.Log(ad.Strings())
+				} else {
+					ch = nil
+				}
+			case err, ok := <-errors:
+				if ok {
+					t.Log(err)
+					n++
+				} else {
+					errors = nil
+				}
+			default:
+			}
+			if ch == nil && errors == nil {
+				break
+			}
+		}
+		if n == 0 {
+			t.Errorf("expected error. ClassAd:\n%s", s)
+		}
+	}
+}
+
+func TestStreamClassAds_good(t *testing.T) {
+	ch := make(chan ClassAd)
+	errors := make(chan error)
+	go StreamClassAds(strings.NewReader(classads), ch, errors)
+	//if err != nil {
+	//	t.Error(err)
+	//}
+	n := 0
+	for {
+		select {
+		case ad, ok := <-ch:
+			if ok {
+				t.Log(ad.Strings())
+				n++
+			} else {
+				ch = nil
+			}
+		case err, ok := <-errors:
+			if ok {
+				t.Error(err)
+			} else {
+				errors = nil
+			}
+		}
+		// break once both channels are closed
+		if ch == nil && errors == nil {
+			break
+		}
+	}
+	if n != classadsLen {
+		t.Errorf("expected %d classads, read %d", classadsLen, n)
+	}
+}
+
 var badClassads = []string{
 	`foo
 bar`,

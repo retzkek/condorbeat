@@ -101,6 +101,43 @@ func ReadClassAds(r io.Reader) ([]ClassAd, error) {
 	return ads, nil
 }
 
+// StreamClassAds reads multiple ClassAds (in "long" format) from r
+// until EOF, writing them to the supplied channel, which is closed
+// when all are read or upon error.  ClassAds should be separated by a
+// blank line.  Numeric attributes are returned as such, but
+// expressions are not evaluated and are returned as strings.  If
+// errors are encountered reading the classads, they will be sent on
+// the errors channel.
+func StreamClassAds(r io.Reader, ch chan ClassAd, errors chan error) {
+	defer close(ch)
+	defer close(errors)
+	scanner := bufio.NewScanner(r)
+	ad := make(ClassAd)
+	for scanner.Scan() {
+		if scanner.Text() == "" {
+			if len(ad) > 0 {
+				ch <- ad
+				ad = make(ClassAd)
+			}
+			continue
+		}
+		// Naïve tokenizing and parsing of long format.
+		parts := strings.SplitN(scanner.Text(), "=", 2)
+		if len(parts) < 2 {
+			errors <- fmt.Errorf("invalid classad attribute: \"%s\"", scanner.Text())
+			continue
+		}
+		key := strings.Trim(parts[0], " \"")
+		ad[key] = AttributeFromString(parts[1])
+	}
+	if err := scanner.Err(); err != nil {
+		errors <- err
+	}
+	if len(ad) > 0 {
+		ch <- ad
+	}
+}
+
 // Strings returns a map of the string representation for all the attributes in the ClassAd.
 func (c ClassAd) Strings() map[string]string {
 	ad := make(map[string]string, len(c))

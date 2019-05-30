@@ -142,3 +142,25 @@ func (c *Command) Run() ([]classad.ClassAd, error) {
 	}
 	return ads, nil
 }
+
+// Stream runs the command and sends the ClassAds on a channel. Errors
+// are returned on a separate channel. Both will be closed when the
+// command is done.
+func (c *Command) Stream(ch chan classad.ClassAd, errors chan error) {
+	cmd := c.Cmd()
+	out, err := cmd.StdoutPipe()
+	if err != nil {
+		errors <- err
+		close(errors)
+		close(ch)
+		return
+	}
+	if err := cmd.Start(); err != nil {
+		errors <- err
+		close(errors)
+		close(ch)
+		return
+	}
+	classad.StreamClassAds(out, ch, errors)
+	cmd.Wait()
+}
