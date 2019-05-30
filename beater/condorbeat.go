@@ -317,7 +317,7 @@ func (bt *Condorbeat) collectStatus(pool, daemonType string, constraint string, 
 				event := beat.Event{
 					Timestamp: time.Now(),
 					Fields: common.MapStr{
-						"type":         "job",
+						"type":         myType,
 						"collector_id": id,
 					},
 				}
