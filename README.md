@@ -1,117 +1,69 @@
 # Condorbeat
 
-Welcome to Condorbeat.
+Condorbeat is a tool to collect raw ClassAds from HTCondor on a
+defined period and publish them to a variety of outputs, including
+Kafka, Logstash, and Elasticsearch. Supported ClassAds include:
 
-Ensure that this folder is at the following location:
-`${GOPATH}/src/github.com/retzkek/condorbeat`
+* Curent jobs in the queue (`condor_q`)
+* Completed jobs (`condor_history`)
+* Machine, daemons, etc (`condor_status`)
 
-## Getting Started with Condorbeat
+## Running
 
-### Requirements
+The fastest way to get condorbeat running is with Docker, using the
+[retzkek/condorbeat](https://hub.docker.com/r/retzkek/condorbeat/)
+image off Docker Hub and bind-mount in your configuration file:
 
-* [Golang](https://golang.org/dl/) 1.7
+    docker pull retzkek/condorbeat
+	docker run -v /path/to/condorbeat.yml:/condorbeat/condorbeat.yml retzkek/condorbeat
 
-### Init Project
-To get running with Condorbeat and also install the
-dependencies, run the following command:
+See instructions below for building the binary from source otherwise.
 
-```
-make setup
-```
+## Configuration
 
-It will create a clean git history for each major step. Note that you can always rewrite the history if you wish before pushing your changes.
+Condorbeat-specific options are under the `condorbeat` section. For
+all other options see the [Beats
+documentation](https://www.elastic.co/guide/en/beats/libbeat/6.3/beats-reference.html)
 
-To push Condorbeat in the git repository, run the following commands:
+* `period` time between ClassAd collection in Go [time.Duration
+  format](https://golang.org/pkg/time/#ParseDuration) (default `68s`).
+* `pool` HTCondor collector/central manager to query. Leave blank for
+  local machine (default).
+* `checkpoint_file` name of file to store checkpoints (last data
+  collection) under `data` directory (default `checkpoints`).
 
-```
-git remote set-url origin https://github.com/retzkek/condorbeat
-git push origin master
-```
+### Queue
 
-For further development, check out the [beat developer guide](https://www.elastic.co/guide/en/beats/libbeat/current/new-beat.html).
+Current jobs in the queue (`condor_q`).
 
-### Build
+* `classads` collect job classads (default `true`).
 
-To build the binary for Condorbeat run the command below. This will generate a binary
-in the same directory with the name condorbeat.
+### History
 
-```
-make
-```
+Collect completed jobs (`condor_history`). *Note that `condor_history`
+is not very efficient at collecting "jobs completed since time t" so
+it's preferable to use `filebeat` directly on the schedd to collect
+the history spool file in realtime.*
 
+* `classads` collect job classads (default `true`).
+* `limit` maximum number of job histories to collect during each
+  period.
 
-### Run
+### Status
 
-To run Condorbeat with debugging output enabled, run:
+Machine, daemon, and any other classads (`condor_status`). Provide a
+  list of ad types to collect. Default:
 
-```
-./condorbeat -c condorbeat.yml -e -d "*"
-```
+    - type: Collector
+	- type: Scheduler
+	- type: Negotiator
 
+* `type` daemon/classAd type (`MyType`).
+* `constraint` optional constraint to apply
 
-### Test
+## Building
 
-To test Condorbeat, run the following command:
+To build a stand-alone executable for your current platform run `make`.
 
-```
-make testsuite
-```
-
-alternatively:
-```
-make unit-tests
-make system-tests
-make integration-tests
-make coverage-report
-```
-
-The test coverage is reported in the folder `./build/coverage/`
-
-### Update
-
-Each beat has a template for the mapping in elasticsearch and a documentation for the fields
-which is automatically generated based on `fields.yml` by running the following command.
-
-```
-make update
-```
-
-
-### Cleanup
-
-To clean  Condorbeat source code, run the following commands:
-
-```
-make fmt
-make simplify
-```
-
-To clean up the build directory and generated artifacts, run:
-
-```
-make clean
-```
-
-
-### Clone
-
-To clone Condorbeat from the git repository, run the following commands:
-
-```
-mkdir -p ${GOPATH}/src/github.com/retzkek/condorbeat
-git clone https://github.com/retzkek/condorbeat ${GOPATH}/src/github.com/retzkek/condorbeat
-```
-
-
-For further development, check out the [beat developer guide](https://www.elastic.co/guide/en/beats/libbeat/current/new-beat.html).
-
-
-## Packaging
-
-The beat frameworks provides tools to crosscompile and package your beat for different platforms. This requires [docker](https://www.docker.com/) and vendoring as described above. To build packages of your beat, run the following command:
-
-```
-make package
-```
-
-This will fetch and create all images required for the build process. The whole process to finish can take several minutes.
+TODO: upgrade to libbeat 6.5+ to take advantage of the better
+cross-platform release build.
