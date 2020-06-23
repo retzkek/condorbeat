@@ -1,10 +1,29 @@
 package htcondor
 
 import (
+	"context"
 	"fmt"
+	"io/ioutil"
 	"os/exec"
+	"strings"
+	"time"
 
+	"github.com/golang/groupcache"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/retzkek/htcondor-go/classad"
+)
+
+var (
+	commandDuration = prometheus.NewHistogram(
+		prometheus.HistogramOpts{
+			Name: "htcondor_client_command_duration_seconds",
+			Help: "Histogram of command runtimes.",
+		},
+	)
+)
+
+const (
+	keySeparator = "\x1f" // unit separator
 )
 
 // Command represents an HTCondor command-line tool, e.g. condor_q.
@@ -35,6 +54,11 @@ type Command struct {
 	Attributes []string
 	// Args is a list of any extra arguments to pass.
 	Args []string
+	// cache is an optional groupcache pool to cache
+	// queries. Inititalize with WithCache().
+	cache         *groupcache.HTTPPool
+	cacheGroup    string
+	cacheLifetime time.Duration
 }
 
 // NewCommand creates a new HTCondor command.
@@ -42,6 +66,18 @@ func NewCommand(command string) *Command {
 	return &Command{
 		Command: command,
 	}
+}
+
+// WithCache initializes a groupcache group for the client. Set cacheLifetime to
+// 0 to *never* expire cached queries (unless they are LRU evicted).
+func (c *Command) WithCache(pool *groupcache.HTTPPool, group string, cacheBytes int64, cacheLifetime time.Duration) *Command {
+	c.cache = pool
+	c.cacheGroup = group
+	c.cacheLifetime = cacheLifetime
+	if groupcache.GetGroup(group) == nil {
+		groupcache.NewGroup(c.cacheGroup, cacheBytes, commandGetter())
+	}
+	return c
 }
 
 // WithPool sets the -pool argument for the command.
@@ -122,45 +158,124 @@ func (c *Command) Cmd() *exec.Cmd {
 	return exec.Command(c.Command, c.MakeArgs()...)
 }
 
+// encodeKey encodes the command into a string, to be used as a cache key.
+func (c *Command) encodeKey() string {
+	timeKey := "0"
+	if c.cacheLifetime > 0 {
+		timeKey = time.Now().Truncate(c.cacheLifetime).Format(time.RFC3339)
+	}
+	return timeKey + keySeparator +
+		c.Command + keySeparator +
+		strings.Join(c.MakeArgs(), keySeparator)
+}
+
+// decodeKey decodes the command from a key string. It does not restore the
+// original Command, instead putting all the arguments into Args.
+func decodeKey(key string) (*Command, error) {
+	parts := strings.Split(key, keySeparator)
+	if len(parts) < 2 {
+		return nil, fmt.Errorf("unable to decode cache key: %s", key)
+	}
+	// first field is time key, we don't need it
+	c := Command{
+		Command: parts[1],
+	}
+	if len(parts) > 2 {
+		c.Args = parts[2:]
+	}
+	return &c, nil
+}
+
+// commandGetter returns a groupCache.GetterFunc that queries HTCondor with the
+// configured command, and stores the raw response in dest.
+func commandGetter() groupcache.GetterFunc {
+	return func(ctx context.Context, key string, dest groupcache.Sink) error {
+		timer := prometheus.NewTimer(commandDuration)
+		defer timer.ObserveDuration()
+
+		c, err := decodeKey(key)
+		if err != nil {
+			return err
+		}
+		cmd := c.Cmd()
+		out, err := cmd.StdoutPipe()
+		if err != nil {
+			return err
+		}
+		if err := cmd.Start(); err != nil {
+			return err
+		}
+		resp, err := ioutil.ReadAll(out)
+		if err != nil {
+			return err
+		}
+		if err := cmd.Wait(); err != nil {
+			return err
+		}
+		return dest.SetBytes(resp)
+	}
+}
+
 // Run runs the command and returns the ClassAds.
 // Use Cmd() if you need more control over the handling of the output.
 func (c *Command) Run() ([]classad.ClassAd, error) {
-	cmd := c.Cmd()
-	out, err := cmd.StdoutPipe()
+	key := c.encodeKey()
+	var resp groupcache.ByteView
+	var err error
+	if c.cache != nil {
+		group := groupcache.GetGroup(c.cacheGroup)
+		err = group.Get(nil, key, groupcache.ByteViewSink(&resp))
+	} else {
+		// call the getter directly
+		err = commandGetter()(nil, key, groupcache.ByteViewSink(&resp))
+	}
 	if err != nil {
 		return nil, err
 	}
-	if err := cmd.Start(); err != nil {
-		return nil, err
-	}
-	ads, err := classad.ReadClassAds(out)
+	ads, err := classad.ReadClassAds(resp.Reader())
 	if err != nil {
-		return nil, err
-	}
-	if err := cmd.Wait(); err != nil {
 		return nil, err
 	}
 	return ads, nil
 }
 
-// Stream runs the command and sends the ClassAds on a channel. Errors
-// are returned on a separate channel. Both will be closed when the
-// command is done.
+// Stream runs the command and sends the ClassAds on a channel. Errors are
+// returned on a separate channel. Both will be closed when the command is done.
+//
+// N.B. if using Stream with a cache you'll lose much of performance and memory
+// advantages of streaming, since the entire HTCondor response must be read,
+// whether from HTCondor or from the cache, before the classads can be sent.
 func (c *Command) Stream(ch chan classad.ClassAd, errors chan error) {
-	cmd := c.Cmd()
-	out, err := cmd.StdoutPipe()
-	if err != nil {
-		errors <- err
-		close(errors)
-		close(ch)
-		return
+	if c.cache != nil {
+		key := c.encodeKey()
+		var resp groupcache.ByteView
+		var err error
+		group := groupcache.GetGroup(c.cacheGroup)
+		err = group.Get(nil, key, groupcache.ByteViewSink(&resp))
+		if err != nil {
+			errors <- fmt.Errorf("error getting response from cache: %s", err)
+			close(errors)
+			close(ch)
+			return
+		}
+		classad.StreamClassAds(resp.Reader(), ch, errors)
+	} else {
+		cmd := c.Cmd()
+		out, err := cmd.StdoutPipe()
+		if err != nil {
+			errors <- fmt.Errorf("error opening command pipe: %s", err)
+			close(errors)
+			close(ch)
+			return
+		}
+		if err := cmd.Start(); err != nil {
+			errors <- fmt.Errorf("error running command: %s", err)
+			errors <- err
+			close(errors)
+			close(ch)
+			return
+		}
+		classad.StreamClassAds(out, ch, errors)
+		cmd.Wait()
 	}
-	if err := cmd.Start(); err != nil {
-		errors <- err
-		close(errors)
-		close(ch)
-		return
-	}
-	classad.StreamClassAds(out, ch, errors)
-	cmd.Wait()
 }

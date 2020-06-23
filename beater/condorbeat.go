@@ -7,10 +7,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/elastic/beats/libbeat/beat"
-	"github.com/elastic/beats/libbeat/common"
-	"github.com/elastic/beats/libbeat/logp"
-	"github.com/elastic/beats/libbeat/paths"
+	"github.com/elastic/beats/v7/libbeat/beat"
+	"github.com/elastic/beats/v7/libbeat/common"
+	"github.com/elastic/beats/v7/libbeat/logp"
+	"github.com/elastic/beats/v7/libbeat/paths"
 
 	"github.com/retzkek/condorbeat/config"
 	htcondor "github.com/retzkek/htcondor-go"
@@ -27,7 +27,7 @@ type Condorbeat struct {
 
 type Checkpoint map[string]time.Time
 
-// Creates beater
+// New creates and instance of condorbeat.
 func New(b *beat.Beat, cfg *common.Config) (beat.Beater, error) {
 	config := config.DefaultConfig
 	if err := cfg.Unpack(&config); err != nil {
@@ -48,6 +48,7 @@ func New(b *beat.Beat, cfg *common.Config) (beat.Beater, error) {
 	return bt, nil
 }
 
+// Run starts condorbeat.
 func (bt *Condorbeat) Run(b *beat.Beat) error {
 	logp.Info("condorbeat is running! Hit CTRL-C to stop it.")
 
@@ -119,7 +120,9 @@ func (bt *Condorbeat) Run(b *beat.Beat) error {
 	}
 }
 
+// Stop stops condorbeat.
 func (bt *Condorbeat) Stop() {
+	bt.client.Close()
 	close(bt.done)
 }
 

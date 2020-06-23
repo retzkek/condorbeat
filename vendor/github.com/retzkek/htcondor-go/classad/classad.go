@@ -131,7 +131,7 @@ func StreamClassAds(r io.Reader, ch chan ClassAd, errors chan error) {
 		ad[key] = AttributeFromString(parts[1])
 	}
 	if err := scanner.Err(); err != nil {
-		errors <- err
+		errors <- fmt.Errorf("scanner error: %s",err)
 	}
 	if len(ad) > 0 {
 		ch <- ad

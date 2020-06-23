@@ -1,8 +1,9 @@
-FROM golang
+FROM golang:buster
+
 
 # Install HTCondor
 RUN wget -qO - http://research.cs.wisc.edu/htcondor/debian/HTCondor-Release.gpg.key | apt-key add - && \
-    echo "deb http://research.cs.wisc.edu/htcondor/debian/stable/ jessie contrib" >> /etc/apt/sources.list && \
+    echo "deb http://research.cs.wisc.edu/htcondor/debian/8.8/buster/ buster contrib" >> /etc/apt/sources.list && \
     apt-get update && \
     apt-get -y install condor
 
@@ -20,11 +21,6 @@ COPY htcondor-docker/hello* /htcondor-test/
 CMD ["/usr/sbin/start-condor.sh"]
 
 # Add app
-RUN mkdir -p /go/src/app
-WORKDIR /go/src/app
-COPY . /go/src/app
-RUN go-wrapper download
-#RUN go-wrapper install
-
-# CMD ["go-wrapper", "run"]
-#
+WORKDIR /go/src/github.com/retzkek/htcondor-go
+COPY . .
+RUN go install

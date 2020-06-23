@@ -1,5 +1,5 @@
-= Condorbeat Docs
+= {Beat} Docs
 
-Welcome to the Condorbeat documentation.
+Welcome to the {Beat} documentation.
 
 

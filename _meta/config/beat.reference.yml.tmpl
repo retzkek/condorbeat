@@ -1,0 +1,31 @@
+################### Condorbeat Configuration Example #########################
+
+############################# Condorbeat ######################################
+
+condorbeat:
+  # Defines how often the pool is queried
+  period: 60s
+  # HTCondor pool collector/central manager to query (blank for local pool)
+  pool:
+  # Name of checkpoints file (under data directory)
+  checkpoint_file: checkpoints
+  # Collect active job information (condor_q) - type "job"
+  queue:
+    # Collect job classads
+    classads: true
+  # Collect completed job information (condor_history) - type "job"
+  history:
+    # Collect job classads
+    classads: true
+    # Maximum number of job histories to fetch at a time.
+    # This needs to be greated than the number of jobs you expect to finish during
+    # a query period!
+    limit: 10000
+  # Collect daemon information (condor_status) - type "<type>_status"
+  status:
+    - type: Collector
+    - type: Scheduler
+    - type: Negotiator
+
+# seccomp needs to be disabled to allow running condor commands
+seccomp.enabled: false
