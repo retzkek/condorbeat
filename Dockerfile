@@ -8,7 +8,10 @@ RUN mage build
 FROM retzkek/htcondor:8.6.12
 
 RUN mkdir -p /condorbeat
-WORKDIR /condorbeat
+RUN useradd condorbeat
 COPY --from=builder /go/src/github.com/retzkek/condorbeat/condorbeat* /condorbeat/
+RUN chown -R condorbeat:condorbeat /condorbeat
+WORKDIR /condorbeat
+USER condorbeat
 
 CMD ["./condorbeat","-e","-d","*"]
