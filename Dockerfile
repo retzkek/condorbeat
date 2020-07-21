@@ -8,11 +8,13 @@ RUN mage build
 FROM retzkek/htcondor:8.6.12
 
 RUN mkdir -p /condorbeat
-RUN useradd -u 1001 condorbeat
+RUN useradd -u 1001 -g 0 condorbeat
 COPY --from=builder /go/src/github.com/retzkek/condorbeat/condorbeat* /condorbeat/
 # make working directory owned by root group for openshift
 # https://docs.openshift.com/container-platform/3.3/creating_images/guidelines.html#openshift-container-platform-specific-guidelines
-RUN chown -R condorbeat:0 /condorbeat
+RUN chown -R condorbeat:0 /condorbeat && \
+    chmod -R g=u /condorbeat && \
+    chmod go-w /condorbeat/condorbeat.yml
 WORKDIR /condorbeat
 USER 1001
 
