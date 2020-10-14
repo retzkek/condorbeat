@@ -20,7 +20,6 @@ require (
 	github.com/dlclark/regexp2 v1.2.0 // indirect
 	github.com/dop251/goja v0.0.0-20200622111502-2faa37d3dedf // indirect
 	github.com/dop251/goja_nodejs v0.0.0-20200128125109-2d688c7e0ac4 // indirect
-	github.com/elastic/beats v7.6.2+incompatible // indirect
 	github.com/elastic/beats/v7 v7.0.0-alpha2.0.20200623162658-9324f942ab74
 	github.com/fatih/color v1.9.0 // indirect
 	github.com/go-sourcemap/sourcemap v2.1.3+incompatible // indirect
@@ -32,7 +31,7 @@ require (
 	github.com/pierrre/gotestcover v0.0.0-20160113212533-7b94f124d338
 	github.com/prometheus/procfs v0.1.3 // indirect
 	github.com/rcrowley/go-metrics v0.0.0-20200313005456-10cdbea86bc0 // indirect
-	github.com/retzkek/htcondor-go v1.1.0
+	github.com/retzkek/htcondor-go v1.1.2
 	github.com/reviewdog/reviewdog v0.9.17
 	github.com/tsg/go-daemon v0.0.0-20200207173439-e704b93fd89b
 	go.elastic.co/apm v1.8.0 // indirect
