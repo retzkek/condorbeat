@@ -403,7 +403,7 @@ github.com/prometheus/procfs/internal/fs
 github.com/prometheus/procfs/internal/util
 # github.com/rcrowley/go-metrics v0.0.0-20200313005456-10cdbea86bc0
 github.com/rcrowley/go-metrics
-# github.com/retzkek/htcondor-go v1.1.0
+# github.com/retzkek/htcondor-go v1.1.2
 github.com/retzkek/htcondor-go
 github.com/retzkek/htcondor-go/classad
 # github.com/reviewdog/errorformat v0.0.0-20200109134752-8983be9bc7dd

@@ -23,7 +23,8 @@ var (
 )
 
 const (
-	keySeparator = "\x1f" // unit separator
+	keySeparator    = "\x1f"     // unit separator
+	attributeFormat = "-af:lrng" // format command for condor attributes
 )
 
 // Command represents an HTCondor command-line tool, e.g. condor_q.
@@ -144,7 +145,7 @@ func (c *Command) MakeArgs() []string {
 		args = append(args, c.Args...)
 	}
 	if len(c.Attributes) > 0 {
-		args = append(args, "-af:lrng")
+		args = append(args, attributeFormat)
 		args = append(args, c.Attributes...)
 	} else {
 		args = append(args, "-long")
@@ -181,7 +182,17 @@ func decodeKey(key string) (*Command, error) {
 		Command: parts[1],
 	}
 	if len(parts) > 2 {
-		c.Args = parts[2:]
+		endArgs := len(parts) - 1
+		for i, arg := range parts {
+			if arg == attributeFormat {
+				endArgs = i
+				break
+			}
+		}
+		c.Args = parts[2:endArgs]
+		if endArgs < len(parts)-1 {
+			c.Attributes = parts[endArgs+1:]
+		}
 	}
 	return &c, nil
 }

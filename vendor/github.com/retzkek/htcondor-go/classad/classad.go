@@ -2,6 +2,7 @@ package classad
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"io"
 	"strconv"
@@ -131,7 +132,7 @@ func StreamClassAds(r io.Reader, ch chan ClassAd, errors chan error) {
 		ad[key] = AttributeFromString(parts[1])
 	}
 	if err := scanner.Err(); err != nil {
-		errors <- fmt.Errorf("scanner error: %s",err)
+		errors <- fmt.Errorf("scanner error: %s", err)
 	}
 	if len(ad) > 0 {
 		ch <- ad
@@ -145,4 +146,27 @@ func (c ClassAd) Strings() map[string]string {
 		ad[k] = v.String()
 	}
 	return ad
+}
+
+// MarshalJSON returns the ClassAd as a JSON document.
+func (c ClassAd) MarshalJSON() ([]byte, error) {
+	var b bytes.Buffer
+	fmt.Fprintf(&b, "{")
+	first := true
+	for k, v := range c {
+		if first {
+			first = false
+		} else {
+			fmt.Fprintf(&b, ",")
+		}
+		fmt.Fprintf(&b, "\"%s\":", k)
+		switch v.Type {
+		case Integer, Real:
+			fmt.Fprintf(&b, "%s", v.String())
+		default:
+			fmt.Fprintf(&b, "\"%s\"", v.String())
+		}
+	}
+	fmt.Fprintf(&b, "}")
+	return b.Bytes(), nil
 }
