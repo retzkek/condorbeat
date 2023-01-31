@@ -5,7 +5,7 @@ COPY . .
 RUN mage build
 
 
-FROM retzkek/htcondor:8.6.12
+FROM htcondor/base
 
 RUN mkdir -p /condorbeat
 RUN useradd -u 1001 -g 0 condorbeat
