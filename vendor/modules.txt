@@ -553,10 +553,11 @@ github.com/xdg/scram
 # github.com/xdg/stringprep v1.0.0
 ## explicit
 github.com/xdg/stringprep
-# go.elastic.co/apm v1.8.0
+# go.elastic.co/apm v1.11.0
 ## explicit; go 1.13
 go.elastic.co/apm
 go.elastic.co/apm/apmconfig
+go.elastic.co/apm/internal/apmcloudutil
 go.elastic.co/apm/internal/apmcontext
 go.elastic.co/apm/internal/apmhostutil
 go.elastic.co/apm/internal/apmhttputil

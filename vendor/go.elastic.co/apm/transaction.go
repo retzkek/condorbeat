@@ -15,7 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package apm
+package apm // import "go.elastic.co/apm"
 
 import (
 	cryptorand "crypto/rand"
@@ -57,7 +57,7 @@ func (t *Tracer) StartTransactionOptions(name, transactionType string, opts Tran
 	// transaction.
 	instrumentationConfig := t.instrumentationConfig()
 	tx.recording = instrumentationConfig.recording
-	if !tx.recording {
+	if !tx.recording || !t.Active() {
 		return tx
 	}
 
@@ -66,6 +66,7 @@ func (t *Tracer) StartTransactionOptions(name, transactionType string, opts Tran
 	tx.stackTraceLimit = instrumentationConfig.stackTraceLimit
 	tx.Context.captureHeaders = instrumentationConfig.captureHeaders
 	tx.propagateLegacyHeader = instrumentationConfig.propagateLegacyHeader
+	tx.Context.sanitizedFieldNames = instrumentationConfig.sanitizedFieldNames
 	tx.breakdownMetricsEnabled = t.breakdownMetrics.enabled
 
 	var root bool
@@ -97,8 +98,30 @@ func (t *Tracer) StartTransactionOptions(name, transactionType string, opts Tran
 	}
 
 	if root {
-		sampler := instrumentationConfig.sampler
-		if sampler == nil || sampler.Sample(tx.traceContext) {
+		var result SampleResult
+		if instrumentationConfig.extendedSampler != nil {
+			result = instrumentationConfig.extendedSampler.SampleExtended(SampleParams{
+				TraceContext: tx.traceContext,
+			})
+			if !result.Sampled {
+				// Special case: for unsampled transactions we
+				// report a sample rate of 0, so that we do not
+				// count them in aggregations in the server.
+				// This is necessary to avoid overcounting, as
+				// we will scale the sampled transactions.
+				result.SampleRate = 0
+			}
+			sampleRate := roundSampleRate(result.SampleRate)
+			tx.traceContext.State = NewTraceState(TraceStateEntry{
+				Key:   elasticTracestateVendorKey,
+				Value: formatElasticTracestateValue(sampleRate),
+			})
+		} else if instrumentationConfig.sampler != nil {
+			result.Sampled = instrumentationConfig.sampler.Sample(tx.traceContext)
+		} else {
+			result.Sampled = true
+		}
+		if result.Sampled {
 			o := tx.traceContext.Options.WithRecorded(true)
 			tx.traceContext.Options = o
 		}
@@ -224,6 +247,7 @@ func (tx *Transaction) Discard() {
 		return
 	}
 	tx.reset(tx.tracer)
+	tx.TransactionData = nil
 }
 
 // End enqueues tx for sending to the Elastic APM server.
@@ -242,6 +266,9 @@ func (tx *Transaction) End() {
 	if tx.recording {
 		if tx.Duration < 0 {
 			tx.Duration = time.Since(tx.timestamp)
+		}
+		if tx.Outcome == "" {
+			tx.Outcome = tx.Context.outcome()
 		}
 		tx.enqueue()
 	} else {
@@ -299,6 +326,17 @@ type TransactionData struct {
 
 	// Result holds the transaction result.
 	Result string
+
+	// Outcome holds the transaction outcome: success, failure, or
+	// unknown (the default). If Outcome is set to something else,
+	// it will be replaced with "unknown".
+	//
+	// Outcome is used for error rate calculations. A value of "success"
+	// indicates that a transaction succeeded, while "failure" indicates
+	// that the transaction failed. If Outcome is set to "unknown" (or
+	// some other value), then the transaction will not be included in
+	// error rate calculations.
+	Outcome string
 
 	recording               bool
 	maxSpans                int
