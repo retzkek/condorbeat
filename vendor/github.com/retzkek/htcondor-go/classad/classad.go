@@ -9,6 +9,11 @@ import (
 	"strings"
 )
 
+// ScanBufferSize is the size in bytes of the buffer used while reading in each
+// classad attribute. Default bufio.MaxScanTokenSize is 64kB, which may be too
+// small. Go big or go home.
+const ScanBufferSize = 1024 * 1024
+
 // AttributeType represents the supported Classad attribute types
 type AttributeType int
 
@@ -75,6 +80,8 @@ type ClassAd map[string]Attribute
 // Numeric attributes are returned as such, but expressions are not evaluated and are returned as strings.
 func ReadClassAds(r io.Reader) ([]ClassAd, error) {
 	scanner := bufio.NewScanner(r)
+	buf := make([]byte, ScanBufferSize)
+	scanner.Buffer(buf, ScanBufferSize)
 	ads := make([]ClassAd, 0)
 	ad := make(ClassAd)
 	for scanner.Scan() {
@@ -113,6 +120,8 @@ func StreamClassAds(r io.Reader, ch chan ClassAd, errors chan error) {
 	defer close(ch)
 	defer close(errors)
 	scanner := bufio.NewScanner(r)
+	buf := make([]byte, ScanBufferSize)
+	scanner.Buffer(buf, ScanBufferSize)
 	ad := make(ClassAd)
 	for scanner.Scan() {
 		if scanner.Text() == "" {

@@ -9,16 +9,25 @@ import (
 	"time"
 
 	"github.com/golang/groupcache"
+	opentracing "github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/retzkek/htcondor-go/classad"
 )
 
 var (
-	commandDuration = prometheus.NewHistogram(
+	// CommandDuration is a prometheus histogram metric that records the
+	// duration to run each command. It is up to the client to register this
+	// metric with the prometheus client, e.g.
+	//
+	//    func init() {
+	//        prometheus.MustRegister(htcondor.CommandDuration)
+	//    }
+	CommandDuration = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Name: "htcondor_client_command_duration_seconds",
 			Help: "Histogram of command runtimes.",
 		},
+		[]string{"command"},
 	)
 )
 
@@ -67,6 +76,30 @@ func NewCommand(command string) *Command {
 	return &Command{
 		Command: command,
 	}
+}
+
+// Copy returns a new copy of the command, useful for adding further arguments
+// without changing the base command. The commands share the cache.
+func (c *Command) Copy() *Command {
+	cc := Command{
+		Command:       c.Command,
+		Pool:          c.Pool,
+		Name:          c.Name,
+		Limit:         c.Limit,
+		Constraint:    c.Constraint,
+		Attributes:    make([]string, len(c.Attributes)),
+		Args:          make([]string, len(c.Args)),
+		cache:         c.cache,
+		cacheGroup:    c.cacheGroup,
+		cacheLifetime: c.cacheLifetime,
+	}
+	if len(c.Attributes) > 0 {
+		copy(cc.Attributes, c.Attributes)
+	}
+	if len(c.Args) > 0 {
+		copy(cc.Args, c.Args)
+	}
+	return &cc
 }
 
 // WithCache initializes a groupcache group for the client. Set cacheLifetime to
@@ -159,6 +192,12 @@ func (c *Command) Cmd() *exec.Cmd {
 	return exec.Command(c.Command, c.MakeArgs()...)
 }
 
+// CmdContext generates an exec.Cmd with context you can use to run the command
+// manually. Use Run() to run the command and get back ClassAds.
+func (c *Command) CmdContext(ctx context.Context) *exec.Cmd {
+	return exec.CommandContext(ctx, c.Command, c.MakeArgs()...)
+}
+
 // encodeKey encodes the command into a string, to be used as a cache key.
 func (c *Command) encodeKey() string {
 	timeKey := "0"
@@ -201,26 +240,53 @@ func decodeKey(key string) (*Command, error) {
 // configured command, and stores the raw response in dest.
 func commandGetter() groupcache.GetterFunc {
 	return func(ctx context.Context, key string, dest groupcache.Sink) error {
-		timer := prometheus.NewTimer(commandDuration)
-		defer timer.ObserveDuration()
+		span, ctx := opentracing.StartSpanFromContext(ctx, "Getter")
+		defer span.Finish()
+		span.SetTag("key", key)
 
 		c, err := decodeKey(key)
 		if err != nil {
+			span.SetTag("error", true)
+			span.LogKV("error", fmt.Sprintf("error decoding key: %s", err.Error()))
 			return err
 		}
-		cmd := c.Cmd()
+		c.addTracingTags(span)
+		timer := prometheus.NewTimer(CommandDuration.WithLabelValues(c.Command))
+		defer timer.ObserveDuration()
+
+		cmd := c.CmdContext(ctx)
 		out, err := cmd.StdoutPipe()
 		if err != nil {
+			span.SetTag("error", true)
+			span.LogKV("error", fmt.Sprintf("error creating stdout pipe: %s", err.Error()))
+			return err
+		}
+		stderr, err := cmd.StderrPipe()
+		if err != nil {
+			span.SetTag("error", true)
+			span.LogKV("error", fmt.Sprintf("error creating stderr pipe: %s", err.Error()))
 			return err
 		}
 		if err := cmd.Start(); err != nil {
+			span.SetTag("error", true)
+			span.LogKV("error", fmt.Sprintf("error creating command: %s", err.Error()))
 			return err
 		}
 		resp, err := ioutil.ReadAll(out)
 		if err != nil {
+			span.SetTag("error", true)
+			span.LogKV("error", fmt.Sprintf("error reading stdout: %s", err.Error()))
+			return err
+		}
+		rerr, err := ioutil.ReadAll(stderr)
+		if err != nil {
+			span.SetTag("error", true)
+			span.LogKV("error", fmt.Sprintf("error reading stderr: %s", err.Error()))
 			return err
 		}
 		if err := cmd.Wait(); err != nil {
+			span.SetTag("error", true)
+			span.LogKV("error", err.Error(), "stdout", string(resp), "stderr", string(rerr))
 			return err
 		}
 		return dest.SetBytes(resp)
@@ -230,21 +296,33 @@ func commandGetter() groupcache.GetterFunc {
 // Run runs the command and returns the ClassAds.
 // Use Cmd() if you need more control over the handling of the output.
 func (c *Command) Run() ([]classad.ClassAd, error) {
+	return c.RunWithContext(context.Background())
+}
+
+// RunWithContext runs the command with the given context and returns the ClassAds. Use
+// Cmd() if you need more control over the handling of the output.
+func (c *Command) RunWithContext(ctx context.Context) ([]classad.ClassAd, error) {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "Run")
+	defer span.Finish()
+	c.addTracingTags(span)
+
 	key := c.encodeKey()
 	var resp groupcache.ByteView
 	var err error
 	if c.cache != nil {
 		group := groupcache.GetGroup(c.cacheGroup)
-		err = group.Get(nil, key, groupcache.ByteViewSink(&resp))
+		err = group.Get(ctx, key, groupcache.ByteViewSink(&resp))
 	} else {
 		// call the getter directly
-		err = commandGetter()(nil, key, groupcache.ByteViewSink(&resp))
+		err = commandGetter()(ctx, key, groupcache.ByteViewSink(&resp))
 	}
 	if err != nil {
+		span.SetTag("error", true)
 		return nil, err
 	}
 	ads, err := classad.ReadClassAds(resp.Reader())
 	if err != nil {
+		span.SetTag("error", true)
 		return nil, err
 	}
 	return ads, nil
@@ -257,30 +335,53 @@ func (c *Command) Run() ([]classad.ClassAd, error) {
 // advantages of streaming, since the entire HTCondor response must be read,
 // whether from HTCondor or from the cache, before the classads can be sent.
 func (c *Command) Stream(ch chan classad.ClassAd, errors chan error) {
+	c.StreamWithContext(context.Background(), ch, errors)
+}
+
+// StreamWithContext runs the command with the given context and sends the
+// ClassAds on a channel. Errors are returned on a separate channel. Both will
+// be closed when the command is done.
+//
+// N.B. if using Stream with a cache you'll lose much of performance and memory
+// advantages of streaming, since the entire HTCondor response must be read,
+// whether from HTCondor or from the cache, before the classads can be sent.
+func (c *Command) StreamWithContext(ctx context.Context, ch chan classad.ClassAd, errors chan error) {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "Stream")
+	defer span.Finish()
+	c.addTracingTags(span)
+
 	if c.cache != nil {
 		key := c.encodeKey()
 		var resp groupcache.ByteView
 		var err error
 		group := groupcache.GetGroup(c.cacheGroup)
-		err = group.Get(nil, key, groupcache.ByteViewSink(&resp))
+		err = group.Get(ctx, key, groupcache.ByteViewSink(&resp))
 		if err != nil {
-			errors <- fmt.Errorf("error getting response from cache: %s", err)
+			span.SetTag("error", true)
+			err = fmt.Errorf("error getting response from cache: %s", err)
+			span.LogKV("error", err.Error())
+			errors <- err
 			close(errors)
 			close(ch)
 			return
 		}
 		classad.StreamClassAds(resp.Reader(), ch, errors)
 	} else {
-		cmd := c.Cmd()
+		cmd := c.CmdContext(ctx)
 		out, err := cmd.StdoutPipe()
 		if err != nil {
-			errors <- fmt.Errorf("error opening command pipe: %s", err)
+			span.SetTag("error", true)
+			err = fmt.Errorf("error opening command pipe: %s", err)
+			span.LogKV("error", err.Error())
+			errors <- err
 			close(errors)
 			close(ch)
 			return
 		}
 		if err := cmd.Start(); err != nil {
-			errors <- fmt.Errorf("error running command: %s", err)
+			span.SetTag("error", true)
+			err = fmt.Errorf("error running command: %s", err)
+			span.LogKV("error", err.Error())
 			errors <- err
 			close(errors)
 			close(ch)
@@ -289,4 +390,11 @@ func (c *Command) Stream(ch chan classad.ClassAd, errors chan error) {
 		classad.StreamClassAds(out, ch, errors)
 		cmd.Wait()
 	}
+}
+
+func (c *Command) addTracingTags(span opentracing.Span) {
+	span.SetTag("component", "htcondor")
+	span.SetTag("db.type", "htcondor")
+	span.SetTag("db.instance", c.Pool)
+	span.SetTag("db.statement", c.Command+" "+strings.Join(c.MakeArgs(), " "))
 }

@@ -1,4 +1,4 @@
-FROM golang:1.13 as builder
+FROM golang:1.17 as builder
 WORKDIR /go/src/github.com/retzkek/condorbeat
 RUN go get github.com/magefile/mage
 COPY . .
