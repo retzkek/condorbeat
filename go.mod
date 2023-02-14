@@ -119,7 +119,7 @@ require (
 	github.com/xanzy/go-gitlab v0.22.3 // indirect
 	github.com/xdg/scram v0.0.0-20180814205039-7eeb5667e42c // indirect
 	github.com/xdg/stringprep v1.0.0 // indirect
-	go.elastic.co/apm v1.8.0 // indirect
+	go.elastic.co/apm v1.11.0 // indirect
 	go.elastic.co/apm/module/apmelasticsearch v1.7.2 // indirect
 	go.elastic.co/apm/module/apmhttp v1.7.2 // indirect
 	go.elastic.co/ecszap v0.2.0 // indirect

@@ -15,9 +15,19 @@
 // specific language governing permissions and limitations
 // under the License.
 
+// +build !go1.10
+
 package apm // import "go.elastic.co/apm"
 
-const (
-	// AgentVersion is the Elastic APM Go Agent version.
-	AgentVersion = "1.11.0"
-)
+import "math"
+
+// Implementation of math.Round for Go < 1.10.
+//
+// Code shamelessly copied from pkg/math.
+func round(x float64) float64 {
+	t := math.Trunc(x)
+	if math.Abs(x-t) >= 0.5 {
+		return t + math.Copysign(1, x)
+	}
+	return t
+}

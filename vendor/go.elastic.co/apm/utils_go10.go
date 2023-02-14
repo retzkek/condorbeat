@@ -15,9 +15,12 @@
 // specific language governing permissions and limitations
 // under the License.
 
+// +build go1.10
+
 package apm // import "go.elastic.co/apm"
 
-const (
-	// AgentVersion is the Elastic APM Go Agent version.
-	AgentVersion = "1.11.0"
-)
+import "math"
+
+func round(x float64) float64 {
+	return math.Round(x)
+}
