@@ -619,8 +619,8 @@ go.uber.org/zap/internal/color
 go.uber.org/zap/internal/exit
 go.uber.org/zap/zapcore
 go.uber.org/zap/zaptest/observer
-# golang.org/x/crypto v0.0.0-20200622213623-75b288015ac9
-## explicit; go 1.11
+# golang.org/x/crypto v0.0.0-20210921155107-089bfa567519
+## explicit; go 1.17
 golang.org/x/crypto/cast5
 golang.org/x/crypto/ed25519
 golang.org/x/crypto/ed25519/internal/edwards25519
@@ -641,12 +641,13 @@ golang.org/x/exp/cmd/apidiff
 ## explicit; go 1.11
 golang.org/x/lint
 golang.org/x/lint/golint
-# golang.org/x/mod v0.2.0
-## explicit; go 1.12
+# golang.org/x/mod v0.6.0-dev.0.20220419223038-86c51ed26bb4
+## explicit; go 1.17
+golang.org/x/mod/internal/lazyregexp
 golang.org/x/mod/module
 golang.org/x/mod/semver
-# golang.org/x/net v0.0.0-20200602114024-627f9648deb9
-## explicit; go 1.11
+# golang.org/x/net v0.0.0-20220722155237-a158d28d115b
+## explicit; go 1.17
 golang.org/x/net/bpf
 golang.org/x/net/context
 golang.org/x/net/context/ctxhttp
@@ -670,20 +671,25 @@ golang.org/x/oauth2/google
 golang.org/x/oauth2/internal
 golang.org/x/oauth2/jws
 golang.org/x/oauth2/jwt
-# golang.org/x/sync v0.0.0-20190911185100-cd5d95a43a6e
+# golang.org/x/sync v0.0.0-20220722155255-886fb9371eb4
 ## explicit
 golang.org/x/sync/errgroup
-# golang.org/x/sys v0.0.0-20200622214017-ed371f2e16b4
-## explicit; go 1.12
+# golang.org/x/sys v0.0.0-20220722155257-8c9f86f7a55f
+## explicit; go 1.17
+golang.org/x/sys/execabs
 golang.org/x/sys/internal/unsafeheader
+golang.org/x/sys/plan9
 golang.org/x/sys/unix
 golang.org/x/sys/windows
 golang.org/x/sys/windows/registry
 golang.org/x/sys/windows/svc
 golang.org/x/sys/windows/svc/debug
 golang.org/x/sys/windows/svc/eventlog
-# golang.org/x/text v0.3.3
-## explicit; go 1.11
+# golang.org/x/term v0.0.0-20210927222741-03fcf44c2211
+## explicit; go 1.17
+golang.org/x/term
+# golang.org/x/text v0.3.8
+## explicit; go 1.17
 golang.org/x/text/cases
 golang.org/x/text/collate
 golang.org/x/text/internal
@@ -699,8 +705,8 @@ golang.org/x/text/unicode/norm
 # golang.org/x/time v0.0.0-20191024005414-555d28b269f0
 ## explicit
 golang.org/x/time/rate
-# golang.org/x/tools v0.0.0-20200623045635-ff88973b1e4e
-## explicit; go 1.11
+# golang.org/x/tools v0.1.12
+## explicit; go 1.18
 golang.org/x/tools/cmd/goimports
 golang.org/x/tools/go/analysis
 golang.org/x/tools/go/analysis/passes/inspect
@@ -711,6 +717,7 @@ golang.org/x/tools/go/gcexportdata
 golang.org/x/tools/go/internal/cgo
 golang.org/x/tools/go/internal/gcimporter
 golang.org/x/tools/go/internal/packagesdriver
+golang.org/x/tools/go/internal/pkgbits
 golang.org/x/tools/go/loader
 golang.org/x/tools/go/packages
 golang.org/x/tools/go/types/objectpath
@@ -726,11 +733,8 @@ golang.org/x/tools/internal/gocommand
 golang.org/x/tools/internal/gopathwalk
 golang.org/x/tools/internal/imports
 golang.org/x/tools/internal/packagesinternal
+golang.org/x/tools/internal/typeparams
 golang.org/x/tools/internal/typesinternal
-# golang.org/x/xerrors v0.0.0-20191204190536-9bdfabe68543
-## explicit; go 1.11
-golang.org/x/xerrors
-golang.org/x/xerrors/internal
 # google.golang.org/api v0.15.0
 ## explicit; go 1.11
 google.golang.org/api/googleapi
