@@ -6,12 +6,13 @@ package config
 import "time"
 
 type Config struct {
-	Period         time.Duration  `config:"period"`
-	Pool           string         `config:"pool"`
-	CheckpointFile string         `config:"checkpoint_file"`
-	Queue          queueConfig    `config:"queue"`
-	History        historyConfig  `config:"history"`
-	Status         []statusConfig `config:"status"`
+	Period           time.Duration  `config:"period"`
+	Pool             string         `config:"pool"`
+	ScheddConstraint string         `config:"schedd_constraint"`
+	CheckpointFile   string         `config:"checkpoint_file"`
+	Queue            queueConfig    `config:"queue"`
+	History          historyConfig  `config:"history"`
+	Status           []statusConfig `config:"status"`
 }
 
 type queueConfig struct {

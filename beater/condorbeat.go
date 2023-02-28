@@ -55,7 +55,7 @@ func (bt *Condorbeat) Run(b *beat.Beat) error {
 	schedds := []string{""}
 	if bt.config.Pool != "" {
 		var err error
-		schedds, err = getSchedds(bt.config.Pool)
+		schedds, err = getSchedds(bt.config.Pool, bt.config.ScheddConstraint)
 		if err != nil {
 			return err
 		}
@@ -158,8 +158,13 @@ func (bt *Condorbeat) checkpointString() string {
 	return str
 }
 
-func getSchedds(pool string) ([]string, error) {
-	ads, err := htcondor.NewCommand("condor_status").WithPool(pool).WithArg("-schedd").WithAttribute("name").Run()
+func getSchedds(pool string, constraint string) ([]string, error) {
+	ads, err := htcondor.NewCommand("condor_status").
+		WithPool(pool).
+		WithConstraint(constraint).
+		WithArg("-schedd").
+		WithAttribute("name").
+		Run()
 	if err != nil {
 		return nil, err
 	}
