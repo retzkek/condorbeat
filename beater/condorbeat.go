@@ -74,7 +74,7 @@ func (bt *Condorbeat) Run(b *beat.Beat) error {
 	if bt.config.Queue.Classads {
 		for _, schedd := range schedds {
 			wg.Add(1)
-			go bt.collectQueue(bt.config.Pool, schedd, bt.config.Period, &wg)
+			go bt.collectQueue(bt.config.Pool, schedd, bt.config.Queue.Constraint, bt.config.Period, &wg)
 		}
 	}
 	// launch history collectors
@@ -175,14 +175,15 @@ func getSchedds(pool string, constraint string) ([]string, error) {
 	return schedds, nil
 }
 
-func (bt *Condorbeat) collectQueue(pool, name string, period time.Duration, done *sync.WaitGroup) {
+func (bt *Condorbeat) collectQueue(pool, name, constraint string, period time.Duration, done *sync.WaitGroup) {
 	defer done.Done()
 	id := "condor_q-" + pool + "-" + name
 	cmd := &htcondor.Command{
-		Command: "condor_q",
-		Pool:    pool,
-		Name:    name,
-		Args:    []string{"-allusers", "-stream-results"},
+		Command:    "condor_q",
+		Pool:       pool,
+		Name:       name,
+		Args:       []string{"-allusers", "-stream-results"},
+		Constraint: constraint,
 	}
 	ticker := time.NewTicker(period)
 	for {

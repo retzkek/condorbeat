@@ -16,7 +16,8 @@ type Config struct {
 }
 
 type queueConfig struct {
-	Classads bool `config:"classads"`
+	Classads   bool   `config:"classads"`
+	Constraint string `config:"constraint"`
 }
 
 type historyConfig struct {
@@ -34,7 +35,8 @@ var DefaultConfig = Config{
 	Pool:           "",
 	CheckpointFile: "checkpoints",
 	Queue: queueConfig{
-		Classads: true,
+		Classads:   true,
+		Constraint: "",
 	},
 	History: historyConfig{
 		Classads: true,
